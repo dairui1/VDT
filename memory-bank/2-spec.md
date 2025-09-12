@@ -314,3 +314,49 @@
 ---
 
 如果你愿意，我可以**直接给出 `server.ts` 的最小骨架**（含 `registerPrompt` + `registerTool` 的 TypeScript 空实现、资源落盘与 ndjson 写入器），你可以 `npm init` 后就能跑通 `vdt_start_session → do_capture → analyze` 的最小链路。
+
+---
+
+## 实现对齐性检查（v0.1）结论
+
+### 结论
+
+- 与 v0.1（MVP）设计目标整体一致：已实现 3 个 Prompts、4 个 Tools，`.vdt/sessions/{sid}/` 目录与核心产物（`capture.ndjson`、`buglens.md`）到位，并提供 Gobang 示例用于端到端演示。
+- 存在少量实现缺口与简化点，主要集中在：`write_log` 补丁落盘/应用闭环、MCP 资源读取（Resources）、stderr 误差归类、插桩幂等与运行时 `vdtLog` 可用性等。
+
+### 主要对齐点
+
+- Prompts：`vdt/debugspec/write-log`、`vdt/debugspec/clarify`、`vdt/debugspec/fix-hypothesis` 已实现，符合“仅返回面向 LLM 的文本提示”的定位。
+- Tools：
+  - `vdt_start_session` 创建会话目录与 `meta.json` 并返回 ResourceLink 风格链接。
+  - `write_log` 基于 ts-morph 在函数入口插入 `// VDT:log <hash>` 与 `vdtLog({...})`，遵循“只插桩不改逻辑”。
+  - `do_capture`（shell）使用 node-pty，落盘 `logs/capture.ndjson`，支持 env 白名单与脱敏。
+  - `analyze_debug_log` 读取 ndjson，做窗口/聚类与 suspects 推断，生成 `analysis/buglens.md`。
+- 产物/数据：会话目录结构与 ndjson 六字段规范落地，BugLens 基本模板齐备。
+- 示例与测试：`examples/gobang` 包含“0.5 offset”渲染对齐问题；基础单测覆盖日志创建与脱敏。
+
+### 差异/缺口
+
+- `write_log` 补丁落盘与应用：当前仅返回 diff 字符串，未实际写入 `.vdt/sessions/{sid}/patches/0001-write-log.diff`，也缺少“确认后应用”的明确流程；幂等检查偏粗（基于是否包含 `// VDT:log`）。
+- `vdtLog` 运行时可用性：插桩生成 `vdtLog(...)` 调用，但未在目标代码中注入或导入实现，直接应用补丁可能运行时报未定义。
+- stderr → error 识别：node-pty onData 合流难以区分 stdout/stderr，`console.error` 类输出目前被识别为 info，影响错误密度窗口与聚类效果。
+- MCP Resources：Server 能力声明中未注册资源列表/读取 handler，客户端拿到 `vdt://...` 链接后无法通过 MCP 直接取文件内容。
+- Clarify → Analyze 衔接：`selectedIds` 仅做简化切片，未与“候选日志块/时间窗口”建立更精确的映射。
+- 分析启发式：窗口选取与“候选块”抽取策略较粗，needClarify 的触发条件也较简化（符合 MVP，但与文档描述存在差距）。
+
+### 建议下一步
+
+- 完成 `write_log` 闭环：
+  - 将 diff 落盘到 `.vdt/sessions/{sid}/patches/0001-write-log.diff` 并返回 ResourceLink；
+  - 提供 `apply` 开关或新增 `apply_write_log` 工具来实际写入；基于 `// VDT:log <hash>` 或 AST 比对保证幂等。
+- 提供 `vdtLog` 运行时：
+  - 方案 A：随补丁注入最小 `vdtLog` 函数；
+  - 方案 B：新增轻量运行时模块并在插桩点自动 import/require。
+- 改进错误归类：
+  - 尝试分离 stdout/stderr（非 TTY 模式或替代方案）；或加入基于消息模式的启发式将明显错误行标注为 `error`。
+- 实现 MCP 资源读取：
+  - 注册 `list_resources`/`read_resource`，将 `vdt://sessions/{sid}/...` 映射到实际文件路径，便于 IDE/Agent 直接取回产物。
+- Clarify 精准化：
+  - 将澄清结果映射到明确的“候选块 id → 行号/时间区间”，在 analyze 中按区间过滤与加权。
+- 文档/使用指引：
+  - 在 README 中补充 MCP Resources 的使用说明与 `do_capture` 超时/partial 行为；按需将 `.vdt/` 纳入 `.gitignore`。
