@@ -29,8 +29,8 @@ This is the first working version implementing the core VDT debugging workflow w
 ## 🚀 Installation
 
 ```bash
-npm install
-npm run build
+pnpm install
+pnpm run build
 ```
 
 ## 📖 Usage
@@ -80,7 +80,7 @@ do_capture({
   sid: 'session-id', 
   shell: { 
     cwd: './my-project', 
-    commands: ['npm run demo'],
+    commands: ['pnpm run demo'],
     timeoutSec: 30
   },
   redact: {
@@ -126,7 +126,7 @@ Try the included Gobang game demo with intentional bugs:
 
 ```bash
 cd examples/gobang
-npm run demo
+pnpm run demo
 ```
 
 **Known Issues:**
@@ -135,7 +135,7 @@ npm run demo
 
 **VDT Workflow:**
 1. Instrument the renderer: `write_log({ files: ['renderer.js'], anchors: ['gridToPixel'] })`
-2. Capture demo execution: `do_capture({ commands: ['npm run demo'] })`
+2. Capture demo execution: `do_capture({ commands: ['pnpm run demo'] })`
 3. Analyze for the "0.5 offset" hypothesis
 
 ## 🏗️ Architecture
@@ -182,10 +182,10 @@ The analysis engine creates focused debugging chunks:
 ## 🧪 Testing
 
 ```bash
-npm test          # Basic unit tests
-npm run lint      # ESLint validation  
-npm run typecheck # TypeScript validation
-npm run build     # Full compilation
+pnpm test          # Basic unit tests
+pnpm run lint      # ESLint validation  
+pnpm run typecheck # TypeScript validation
+pnpm run build     # Full compilation
 ```
 
 ## 🔍 MCP Resources Usage

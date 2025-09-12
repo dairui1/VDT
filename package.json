@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit"
   },
   "keywords": ["mcp", "debugging", "development", "tools"],
-  "author": "",
+  "author": "Rui Dai<work@dairui1.com>",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

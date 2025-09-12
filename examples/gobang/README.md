@@ -12,10 +12,10 @@ This is a simple Gobang (Five in a Row) game implementation designed to demonstr
 
 ```bash
 # Run basic game
-npm start
+pnpm start
 
 # Run demo with multiple moves
-npm run demo
+pnpm run demo
 ```
 
 ## VDT Testing Workflow
@@ -41,7 +41,7 @@ npm run demo
      sid: '<session-id>', 
      shell: { 
        cwd: './examples/gobang', 
-       commands: ['npm run demo'] 
+       commands: ['pnpm run demo'] 
      } 
    })
    ```
