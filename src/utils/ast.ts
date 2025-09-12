@@ -2,6 +2,7 @@ import { Project, SourceFile, Node, SyntaxKind } from 'ts-morph';
 import { promises as fs } from 'fs';
 import { createHash } from 'crypto';
 import { LogLevel } from '../types/index.js';
+import * as Diff from 'diff';
 
 export class ASTInstrumenter {
   private project: Project;
@@ -20,7 +21,8 @@ export class ASTInstrumenter {
     filePath: string,
     anchors: string[] = [],
     level: LogLevel = 'debug',
-    format: 'ndjson' = 'ndjson'
+    format: 'ndjson' = 'ndjson',
+    sessionDir?: string
   ): Promise<{ diff: string; applied: boolean; hints: string[] }> {
     
     const hints: string[] = [];
@@ -28,12 +30,14 @@ export class ASTInstrumenter {
     // Read original file
     const originalContent = await fs.readFile(filePath, 'utf-8');
     
-    // Check if already instrumented
-    if (originalContent.includes('// VDT:log')) {
+    // Improved idempotency check
+    const existingHashes = this.extractVDTHashes(originalContent);
+    if (existingHashes.length > 0) {
       return {
         diff: '',
         applied: false,
-        hints: ['File already instrumented with VDT logs']
+        hints: [`File already instrumented with ${existingHashes.length} VDT logs`, 
+               'Use force=true to re-instrument or remove existing logs first']
       };
     }
 
@@ -41,6 +45,10 @@ export class ASTInstrumenter {
     const sourceFile = this.project.createSourceFile(filePath, originalContent, { overwrite: true });
     
     let modifications = 0;
+
+    // Add vdtLog runtime function at the top
+    const vdtLogRuntime = this.generateVdtLogRuntime();
+    sourceFile.insertText(0, vdtLogRuntime + '\n\n');
 
     // Find functions to instrument
     const functions: Node[] = [
@@ -72,21 +80,77 @@ export class ASTInstrumenter {
 
     const instrumentedContent = sourceFile.getFullText();
     
-    // Generate diff (simplified - in real implementation use proper diff library)
+    // Generate proper diff
     const diff = this.generateDiff(originalContent, instrumentedContent, filePath);
+
+    // Save diff to session directory if provided
+    if (sessionDir && diff.trim()) {
+      const patchPath = `${sessionDir}/patches/0001-write-log.diff`;
+      await fs.mkdir(`${sessionDir}/patches`, { recursive: true });
+      await fs.writeFile(patchPath, diff);
+      hints.push(`Diff saved to patches/0001-write-log.diff`);
+    }
 
     return {
       diff,
-      applied: false, // Always return false for dry-run, actual application happens separately
+      applied: false, // Always false for dry-run
       hints: [
         `Instrumented ${modifications} functions`,
-        'Use apply=true to write changes to disk'
+        'Use apply=true to write changes to disk',
+        ...hints
       ]
     };
   }
 
-  async applyInstrumentation(filePath: string, newContent: string): Promise<void> {
-    await fs.writeFile(filePath, newContent);
+  async applyInstrumentation(filePath: string, sessionDir: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const patchPath = `${sessionDir}/patches/0001-write-log.diff`;
+      const patchContent = await fs.readFile(patchPath, 'utf-8');
+      
+      // Parse the diff and apply it
+      const originalContent = await fs.readFile(filePath, 'utf-8');
+      const patches = Diff.parsePatch(patchContent);
+      
+      if (patches.length === 0) {
+        return { success: false, message: 'No valid patches found' };
+      }
+
+      const patch = patches[0];
+      const result = Diff.applyPatch(originalContent, patch);
+      
+      if (result === false) {
+        return { success: false, message: 'Failed to apply patch - content may have changed' };
+      }
+
+      // Backup original file
+      const backupPath = `${sessionDir}/patches/original-${Date.now()}.backup`;
+      await fs.writeFile(backupPath, originalContent);
+
+      // Apply the changes
+      await fs.writeFile(filePath, result);
+      
+      return { 
+        success: true, 
+        message: `Successfully applied instrumentation. Backup saved to patches/original-${Date.now()}.backup` 
+      };
+    } catch (error) {
+      return { 
+        success: false, 
+        message: `Failed to apply patch: ${error instanceof Error ? error.message : 'Unknown error'}` 
+      };
+    }
+  }
+
+  private extractVDTHashes(content: string): string[] {
+    const vdtLogPattern = /\/\/ VDT:log ([a-f0-9]{8})/g;
+    const hashes: string[] = [];
+    let match;
+    
+    while ((match = vdtLogPattern.exec(content)) !== null) {
+      hashes.push(match[1]);
+    }
+    
+    return hashes;
   }
 
   private getFunctionName(node: Node): string {
@@ -128,21 +192,19 @@ export class ASTInstrumenter {
   }
 
   private generateDiff(original: string, modified: string, fileName: string): string {
-    // Simplified diff - in real implementation use diff library
-    const originalLines = original.split('\n');
-    const modifiedLines = modified.split('\n');
-    
-    let diff = `--- a/${fileName}\n+++ b/${fileName}\n`;
-    
-    // Very basic diff implementation - just show added lines
-    for (let i = 0; i < modifiedLines.length; i++) {
-      const line = modifiedLines[i];
-      if (line.includes('// VDT:log') || line.includes('vdtLog(')) {
-        diff += `+${line}\n`;
-      }
-    }
-    
-    return diff;
+    const patch = Diff.createPatch(fileName, original, modified, '', '');
+    return patch;
+  }
+
+  private generateVdtLogRuntime(): string {
+    return `// VDT Runtime - Auto-generated logging function
+function vdtLog(event) {
+  if (typeof process !== 'undefined' && process.stdout) {
+    process.stdout.write(JSON.stringify(event) + '\\n');
+  } else if (typeof console !== 'undefined') {
+    console.log(JSON.stringify(event));
+  }
+}`;
   }
 
   static generateVdtLogFunction(): string {

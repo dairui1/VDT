@@ -28,12 +28,24 @@ export interface BugLensChunk {
   title: string;
   excerpt: string;
   refs: string[];
+  metadata?: {
+    type: 'error_window' | 'module' | 'function' | 'rapid_sequence';
+    startIdx?: number;
+    endIdx?: number;
+    errorCount?: number;
+    density?: number;
+    module?: string;
+    func?: string;
+    eventCount?: number;
+    duration?: number;
+  };
 }
 
 export interface AnalysisFindings {
   clusters: any[];
   suspects: any[];
   needClarify?: boolean;
+  candidateChunks?: BugLensChunk[];
 }
 
 export interface CaptureConfig {

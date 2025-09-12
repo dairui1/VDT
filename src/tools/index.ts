@@ -71,6 +71,7 @@ export class VDTTools {
     format?: 'ndjson';
     dryRun?: boolean;
     allowlist?: string[];
+    force?: boolean;
   }): Promise<CallToolResult> {
     try {
       const { 
@@ -80,7 +81,8 @@ export class VDTTools {
         level = 'debug', 
         format = 'ndjson', 
         dryRun = true,
-        allowlist = []
+        allowlist = [],
+        force = false
       } = params;
 
       const session = await this.sessionManager.getSession(sid);
@@ -97,24 +99,35 @@ export class VDTTools {
         throw new Error('No files match allowlist criteria');
       }
 
-      // Process first file (MVP limitation)
-      const targetFile = filteredFiles[0];
-      const result = await this.instrumenter.instrumentFile(targetFile, anchors, level, format);
+      const sessionDir = this.sessionManager.getSessionDir(sid);
+      const results = [];
 
-      if (!dryRun && result.diff) {
-        // In MVP, we just return the diff. Actual application would be a separate call
-        // For now, we can apply it directly if user confirms
+      // Process each file
+      for (const targetFile of filteredFiles) {
+        const result = await this.instrumenter.instrumentFile(
+          targetFile, 
+          anchors, 
+          level, 
+          format, 
+          sessionDir
+        );
+        
+        results.push({
+          file: targetFile,
+          ...result
+        });
       }
 
-      // Save patch
-      const sessionDir = this.sessionManager.getSessionDir(sid);
-      const patchPath = `${sessionDir}/patches/0001-write-log.diff`;
-      
       const response: ToolResponse = {
         data: {
-          diff: this.sessionManager.getResourceLink(sid, 'patches/0001-write-log.diff'),
+          results,
+          patchLink: results.some(r => r.diff) ? 
+            this.sessionManager.getResourceLink(sid, 'patches/0001-write-log.diff') : null,
           applied: !dryRun,
-          hints: result.hints
+          totalModifications: results.reduce((acc, r) => {
+            const mods = r.hints.find(h => h.includes('Instrumented'))?.match(/\d+/);
+            return acc + (mods ? parseInt(mods[0]) : 0);
+          }, 0)
         }
       };
 
@@ -133,6 +146,64 @@ export class VDTTools {
         isError: true,
         message: error instanceof Error ? error.message : 'Unknown error',
         hint: 'Check file permissions and syntax. Use allowlist to restrict scope.'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async applyWriteLog(params: {
+    sid: string;
+    files: string[];
+  }): Promise<CallToolResult> {
+    try {
+      const { sid, files } = params;
+
+      const session = await this.sessionManager.getSession(sid);
+      if (!session) {
+        throw new Error(`Session ${sid} not found`);
+      }
+
+      const sessionDir = this.sessionManager.getSessionDir(sid);
+      const results = [];
+
+      // Apply instrumentation to each file
+      for (const targetFile of files) {
+        const result = await this.instrumenter.applyInstrumentation(targetFile, sessionDir);
+        results.push({
+          file: targetFile,
+          ...result
+        });
+      }
+
+      const response: ToolResponse = {
+        data: {
+          results,
+          successCount: results.filter(r => r.success).length,
+          totalFiles: results.length
+        }
+      };
+
+      return {
+        content: [{
+          type: 'text', 
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'apply_write_log', 'APPLY_ERROR', 
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Ensure write_log was run first and patch files exist.'
       };
 
       return {

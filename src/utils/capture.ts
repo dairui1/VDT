@@ -42,6 +42,7 @@ export class CaptureManager {
       }, timeout);
 
       let buffer = '';
+      let lastStderrTime = 0;
 
       ptyProcess.onData((data: string) => {
         buffer += data;
@@ -54,10 +55,13 @@ export class CaptureManager {
           if (line.trim()) {
             totalLines++;
             
-            // Parse and redact
-            const logEvent = LogProcessor.parseRawLine(line);
+            // Enhanced error detection
+            const isError = this.detectErrorLine(line);
+            const logEvent = this.parseLineWithContext(line, isError, Date.now() - lastStderrTime);
+            
             if (logEvent.level === 'error') {
               errorCount++;
+              lastStderrTime = Date.now();
             }
 
             // Apply redaction
@@ -70,15 +74,37 @@ export class CaptureManager {
         }
       });
 
-      ptyProcess.onExit((exitCode) => {
+      ptyProcess.onExit((exitData) => {
         clearTimeout(timeoutHandle);
+        
+        const exitCode = typeof exitData === 'number' ? exitData : exitData.exitCode;
         
         // Process any remaining buffer
         if (buffer.trim()) {
-          const logEvent = LogProcessor.parseRawLine(buffer);
+          const isError = this.detectErrorLine(buffer) || exitCode !== 0;
+          const logEvent = this.parseLineWithContext(buffer, isError, 0);
           logEvent.msg = LogProcessor.redactSensitive(logEvent.msg, redactConfig.patterns);
           FileManager.writeNDJSON(logFile, logEvent);
           totalLines++;
+          
+          if (logEvent.level === 'error') {
+            errorCount++;
+          }
+        }
+
+        // Add exit code event if non-zero
+        if (exitCode !== 0) {
+          const exitEvent: LogEvent = {
+            ts: Date.now(),
+            level: 'error',
+            module: 'shell',
+            func: 'exit',
+            msg: `Process exited with code ${exitCode}`,
+            kv: { exitCode, hasErrors: errorCount > 0 }
+          };
+          FileManager.writeNDJSON(logFile, exitEvent);
+          totalLines++;
+          errorCount++;
         }
 
         chunks.push(`logs/capture.ndjson`);
@@ -96,6 +122,158 @@ export class CaptureManager {
         }
       }
     });
+  }
+
+  private detectErrorLine(line: string): boolean {
+    const lowerLine = line.toLowerCase();
+    
+    // Common error patterns
+    const errorPatterns = [
+      /error[:;]/i,
+      /exception[:;]/i,
+      /failed[:;]/i,
+      /cannot\s+/i,
+      /unable\s+to/i,
+      /not\s+found/i,
+      /permission\s+denied/i,
+      /segmentation\s+fault/i,
+      /stack\s+trace/i,
+      /\berr\b/i,
+      /\bfatal\b/i,
+      /\bcrash/i,
+      /\bassert/i,
+      /\bpanic/i,
+      /\bat\s+.*:\d+:\d+/  // stack trace pattern
+    ];
+    
+    // Check for error patterns
+    for (const pattern of errorPatterns) {
+      if (pattern.test(line)) {
+        return true;
+      }
+    }
+    
+    // Check for console.error style output
+    if (lowerLine.includes('console.error') || 
+        lowerLine.includes('console.warn') ||
+        lowerLine.includes('stderr')) {
+      return true;
+    }
+    
+    // Check for exit codes or return values indicating error
+    if (/exit\s+code\s+[1-9]/.test(lowerLine) || 
+        /returned\s+[1-9]/.test(lowerLine)) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  private parseLineWithContext(line: string, isError: boolean, timeSinceLastError: number): LogEvent {
+    const level = isError ? 'error' : 'info';
+    
+    // Try to parse as structured log first
+    try {
+      const parsed = JSON.parse(line);
+      if (LogProcessor.isLogEvent(parsed)) {
+        // Override level if we detected an error pattern
+        if (isError && parsed.level !== 'error') {
+          parsed.level = 'error';
+        }
+        return parsed;
+      }
+    } catch {
+      // Fall through to raw line handling
+    }
+
+    // Enhanced parsing for common log formats
+    const module = this.extractModule(line);
+    const func = this.extractFunction(line);
+    const kv = this.extractKeyValues(line);
+    
+    // Add context about error clustering
+    if (isError && timeSinceLastError < 1000) {
+      kv.errorCluster = true;
+    }
+
+    return {
+      ts: Date.now(),
+      level,
+      module,
+      func,
+      msg: line.trim(),
+      kv
+    };
+  }
+
+  private extractModule(line: string): string {
+    // Try to extract module/file name from common patterns
+    const patterns = [
+      /at\s+.*\((.*):(\d+):(\d+)\)/,  // Stack trace
+      /(\w+\.(?:js|ts|py|java)):/,    // File:line pattern
+      /\[(\w+)\]/,                    // [module] pattern
+      /^\s*(\w+):/                    // module: pattern
+    ];
+    
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (match) {
+        return match[1].split('/').pop()?.replace(/\.[^.]*$/, '') || 'unknown';
+      }
+    }
+    
+    return 'unknown';
+  }
+
+  private extractFunction(line: string): string {
+    // Try to extract function name from common patterns
+    const patterns = [
+      /at\s+(\w+)\s+\(/,              // at functionName (
+      /(\w+)\(\):/,                   // functionName():
+      /in\s+(\w+)\s+at/,              // in functionName at
+      /(\w+)\s+failed/                // functionName failed
+    ];
+    
+    for (const pattern of patterns) {
+      const match = line.match(pattern);
+      if (match) {
+        return match[1];
+      }
+    }
+    
+    return 'unknown';
+  }
+
+  private extractKeyValues(line: string): Record<string, any> {
+    const kv: Record<string, any> = {};
+    
+    // Extract line numbers
+    const lineMatch = line.match(/:(\d+):(\d+)/);
+    if (lineMatch) {
+      kv.line = parseInt(lineMatch[1]);
+      kv.column = parseInt(lineMatch[2]);
+    }
+    
+    // Extract exit codes
+    const exitCodeMatch = line.match(/exit\s+code\s+(\d+)/i);
+    if (exitCodeMatch) {
+      kv.exitCode = parseInt(exitCodeMatch[1]);
+    }
+    
+    // Extract durations
+    const durationMatch = line.match(/(\d+(?:\.\d+)?)\s*(ms|s|seconds?|minutes?)/i);
+    if (durationMatch) {
+      kv.duration = parseFloat(durationMatch[1]);
+      kv.durationUnit = durationMatch[2].toLowerCase();
+    }
+    
+    // Extract counts
+    const countMatch = line.match(/(\d+)\s+(error|warning|failed|passed)/i);
+    if (countMatch) {
+      kv[`${countMatch[2].toLowerCase()}Count`] = parseInt(countMatch[1]);
+    }
+    
+    return kv;
   }
 
   private sanitizeEnv(env: Record<string, string>): Record<string, string> {
