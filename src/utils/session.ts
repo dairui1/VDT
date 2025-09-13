@@ -10,6 +10,10 @@ export class SessionManager {
     this.vdtDir = join(repoRoot, '.vdt');
   }
 
+  get currentVdtDir(): string {
+    return this.vdtDir;
+  }
+
   async createSession(repoRoot?: string, note?: string, ttlDays: number = 7): Promise<VDTSession> {
     const sid = uuidv4();
     const sessionRoot = repoRoot || process.cwd();
@@ -23,8 +27,8 @@ export class SessionManager {
       errors: []
     };
 
-    // Create session directory structure
-    const sessionDir = this.getSessionDir(sid);
+    // Create session directory structure using the session's repoRoot
+    const sessionDir = this.getSessionDir(sid, sessionRoot);
     await fs.mkdir(sessionDir, { recursive: true });
     await fs.mkdir(join(sessionDir, 'logs'), { recursive: true });
     await fs.mkdir(join(sessionDir, 'patches'), { recursive: true });
@@ -36,11 +40,33 @@ export class SessionManager {
     return session;
   }
 
-  async getSession(sid: string): Promise<VDTSession | null> {
+  async getSession(sid: string, repoRoot?: string): Promise<VDTSession | null> {
     try {
+      // If repoRoot is provided, try that first
+      if (repoRoot) {
+        const metaPath = join(this.getSessionDir(sid, repoRoot), 'meta.json');
+        try {
+          const data = await fs.readFile(metaPath, 'utf-8');
+          const session = JSON.parse(data);
+          // Update our vdtDir to match the found session for future operations
+          this.vdtDir = join(session.repoRoot, '.vdt');
+          return session;
+        } catch {
+          // Continue to try default location
+        }
+      }
+
+      // Try the default vdtDir
       const metaPath = join(this.getSessionDir(sid), 'meta.json');
-      const data = await fs.readFile(metaPath, 'utf-8');
-      return JSON.parse(data);
+      try {
+        const data = await fs.readFile(metaPath, 'utf-8');
+        const session = JSON.parse(data);
+        // Update our vdtDir to match the found session for future operations
+        this.vdtDir = join(session.repoRoot, '.vdt');
+        return session;
+      } catch {
+        return null;
+      }
     } catch {
       return null;
     }
@@ -63,7 +89,12 @@ export class SessionManager {
     }
   }
 
-  getSessionDir(sid: string): string {
+  getSessionDir(sid: string, repoRoot?: string): string {
+    if (repoRoot) {
+      // Use the provided repoRoot to determine session directory
+      return join(repoRoot, '.vdt', 'sessions', sid);
+    }
+    // Fall back to the instance's vdtDir
     return join(this.vdtDir, 'sessions', sid);
   }
 
@@ -72,7 +103,7 @@ export class SessionManager {
   }
 
   private async writeSessionMeta(session: VDTSession): Promise<void> {
-    const metaPath = join(this.getSessionDir(session.sid), 'meta.json');
+    const metaPath = join(this.getSessionDir(session.sid, session.repoRoot), 'meta.json');
     await fs.writeFile(metaPath, JSON.stringify(session, null, 2));
   }
 }

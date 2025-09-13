@@ -80,7 +80,7 @@ export class ReasonerRunTool extends BaseTool {
 User: ${userPrompt}`;
 
     // Execute codex CLI with timeout
-    const timeout = 120000; // 2 minutes
+    const timeout = 5 * 60 * 1000; // 5 minutes
     const rawResult = await this.runCodexCLI(fullPrompt, timeout);
 
     // Parse and validate result
@@ -149,7 +149,11 @@ User: ${userPrompt}`;
   private async runCodexCLI(prompt: string, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
       const cmd = 'codex';
-      const args = ['-m', 'gpt-5', '-c', 'model_reasoning_effort=high', 'exec'];
+      const args = ['-m', 'gpt-5', '-c', 'model_reasoning_effort=high', 'exec', prompt];
+
+      console.error(`[VDT Debug] Running codex command: ${cmd} ${args.join(' ')}`);
+      console.error(`[VDT Debug] Timeout: ${timeoutMs}ms`);
+      console.error(`[VDT Debug] Prompt: ${prompt.substring(0, 100)}...`);
 
       const child = spawn(cmd, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -159,14 +163,23 @@ User: ${userPrompt}`;
       let stderr = '';
 
       child.stdout.on('data', (data) => {
-        stdout += data.toString();
+        const output = data.toString();
+        console.error(`[VDT Debug] stdout: ${output.substring(0, 200)}...`);
+        stdout += output;
       });
 
       child.stderr.on('data', (data) => {
-        stderr += data.toString();
+        const output = data.toString();
+        console.error(`[VDT Debug] stderr: ${output.substring(0, 200)}...`);
+        stderr += output;
       });
 
       child.on('close', (code) => {
+        console.error(`[VDT Debug] Process closed with code: ${code}`);
+        console.error(`[VDT Debug] Final stdout length: ${stdout.length}`);
+        console.error(`[VDT Debug] Final stderr length: ${stderr.length}`);
+        
+        clearTimeout(timeout);
         if (code === 0) {
           resolve(stdout.trim());
         } else {
@@ -175,89 +188,90 @@ User: ${userPrompt}`;
       });
 
       child.on('error', (error) => {
+        console.error(`[VDT Debug] Process error: ${error.message}`);
+        clearTimeout(timeout);
         reject(new Error(`Failed to start codex process: ${error.message}`));
       });
 
       // Set timeout
       const timeout = setTimeout(() => {
+        console.error(`[VDT Debug] Timeout reached, killing process...`);
         child.kill('SIGTERM');
         reject(new Error(`Codex execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
-      child.on('close', () => {
-        clearTimeout(timeout);
-      });
-
-      // Send prompt to stdin
-      child.stdin.write(prompt);
+      // No need to write to stdin anymore since we're passing prompt as argument
       child.stdin.end();
     });
   }
 
   private parseAndValidateJSON(rawOutput: string): any {
     // Handle codex output which includes lots of log info and thinking process
+    console.error(`[VDT Debug] Raw response length: ${rawOutput.length}`);
+    console.error(`[VDT Debug] Raw response preview: ${rawOutput.substring(0, 300)}...`);
+    
     let jsonStr = rawOutput.trim();
 
-    // Remove markdown code blocks if present
+    // First, look for JSON in markdown code blocks
     const jsonBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (jsonBlockMatch) {
+      console.error(`[VDT Debug] Found JSON in markdown block`);
       jsonStr = jsonBlockMatch[1].trim();
-    }
-
-    // For codex output, look for the JSON after the thinking process
-    // The JSON typically appears after the reasoning and near the end
-    const lines = jsonStr.split('\n');
-    let jsonStartIndex = -1;
-    let braceCount = 0;
-    let jsonLines: string[] = [];
-    let foundStart = false;
-
-    // Find the start of JSON (first standalone '{')
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      // Skip lines that are clearly not JSON
-      if (line.startsWith('[2025-') || line.startsWith('--------') || 
-          line.includes('thinking') || line.includes('codex') || 
-          line.includes('tokens used:') || line.startsWith('**')) {
-        continue;
-      }
-
-      if (line === '{' && !foundStart) {
-        foundStart = true;
-        jsonStartIndex = i;
-        jsonLines.push(line);
-        braceCount = 1;
-      } else if (foundStart) {
-        jsonLines.push(line);
-        
-        // Count braces to find the end of JSON
-        for (const char of line) {
-          if (char === '{') braceCount++;
-          if (char === '}') braceCount--;
-        }
-        
-        if (braceCount === 0) {
-          break;
-        }
-      }
-    }
-
-    if (jsonLines.length > 0) {
-      jsonStr = jsonLines.join('\n');
     } else {
-      // Fallback: try to find JSON within the text using regex
-      const jsonMatch = jsonStr.match(/\{[\s\S]*?\}(?=\s*(?:\[2025-|\n\[|$))/);
+      console.error(`[VDT Debug] No markdown JSON block found, parsing from raw text`);
+      
+      // Look for JSON after the "codex" section - this is where the actual response is
+      const codexSectionMatch = jsonStr.match(/\[2025-[^\]]+\] codex\s*([\s\S]*?)(?:\[2025-[^\]]+\] tokens used:|$)/);
+      if (codexSectionMatch) {
+        console.error(`[VDT Debug] Found codex section`);
+        jsonStr = codexSectionMatch[1].trim();
+      }
+
+      // Remove any remaining timestamp lines and metadata
+      jsonStr = jsonStr.replace(/\[2025-[^\]]+\].*?\n/g, '');
+      jsonStr = jsonStr.replace(/^\s*--------.*?\n/gm, '');
+      jsonStr = jsonStr.replace(/^\s*\*\*.*?\*\*.*?\n/gm, '');
+      jsonStr = jsonStr.replace(/^\s*tokens used:.*?\n/gm, '');
+      
+      // Try to extract the JSON object - look for balanced braces
+      const jsonMatch = jsonStr.match(/(\{(?:[^{}]|{(?:[^{}]|{[^{}]*})*})*\})/);
       if (jsonMatch) {
-        jsonStr = jsonMatch[0];
+        console.error(`[VDT Debug] Found JSON with regex match`);
+        jsonStr = jsonMatch[1];
       } else {
-        // Last resort: find any JSON-like structure
-        const lastJsonMatch = jsonStr.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g);
-        if (lastJsonMatch && lastJsonMatch.length > 0) {
-          jsonStr = lastJsonMatch[lastJsonMatch.length - 1];
+        console.error(`[VDT Debug] No JSON match found with regex, trying line-by-line parsing`);
+        
+        // Fallback: line by line parsing for complex JSON
+        const lines = jsonStr.split('\n');
+        let braceCount = 0;
+        let jsonLines: string[] = [];
+        let inJson = false;
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          
+          // Start of JSON
+          if (trimmed.startsWith('{') && !inJson) {
+            inJson = true;
+            jsonLines.push(line);
+            braceCount = (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+          } else if (inJson) {
+            jsonLines.push(line);
+            braceCount += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+            
+            if (braceCount === 0) {
+              break;
+            }
+          }
+        }
+        
+        if (jsonLines.length > 0) {
+          jsonStr = jsonLines.join('\n');
         }
       }
     }
+
+    console.error(`[VDT Debug] Extracted JSON string: ${jsonStr.substring(0, 200)}...`);
 
     try {
       const parsed = JSON.parse(jsonStr);
