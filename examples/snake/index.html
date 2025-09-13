@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snake Game - VDT Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🐍 Snake Game</h1>
+            <p>Use WASD or arrow keys to move, SPACE to pause, R to restart</p>
+        </header>
+
+        <div class="game-area">
+            <div class="game-info">
+                <div class="info-item">
+                    <label>Score:</label>
+                    <span id="score">0</span>
+                </div>
+                <div class="info-item">
+                    <label>Length:</label>
+                    <span id="length">1</span>
+                </div>
+                <div class="info-item">
+                    <label>Status:</label>
+                    <span id="status" class="status playing">Ready</span>
+                </div>
+            </div>
+
+            <div class="game-canvas-container">
+                <canvas id="gameCanvas" width="400" height="400"></canvas>
+            </div>
+
+            <div class="game-controls">
+                <button id="startBtn" class="btn btn-primary">Start Game</button>
+                <button id="pauseBtn" class="btn btn-secondary">Pause</button>
+                <button id="restartBtn" class="btn btn-secondary">Restart</button>
+            </div>
+
+            <div class="speed-control">
+                <label for="speedRange">Speed:</label>
+                <input type="range" id="speedRange" min="50" max="300" value="150" step="25">
+                <span id="speedValue">150ms</span>
+            </div>
+        </div>
+
+        <div class="mobile-controls">
+            <div class="dpad">
+                <button class="dpad-btn dpad-up" data-direction="up">↑</button>
+                <div class="dpad-middle">
+                    <button class="dpad-btn dpad-left" data-direction="left">←</button>
+                    <button class="dpad-btn dpad-right" data-direction="right">→</button>
+                </div>
+                <button class="dpad-btn dpad-down" data-direction="down">↓</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>How to Play</h3>
+            <ul>
+                <li>Control the snake with WASD keys or arrow keys</li>
+                <li>Eat the red food to grow and increase your score</li>
+                <li>Avoid hitting the walls or your own tail</li>
+                <li>Use SPACE to pause/unpause the game</li>
+                <li>Press R to restart the game</li>
+                <li>On mobile, use the directional pad below</li>
+            </ul>
+        </div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+    <script type="module">
+        import { GameController } from './main.js';
+
+        let gameController;
+
+        function initGame() {
+            const canvas = document.getElementById('gameCanvas');
+            gameController = new GameController({
+                canvas: canvas,
+                width: 20,
+                height: 20,
+                speed: 150
+            });
+
+            setupEventListeners();
+            gameController.render(); // Initial render
+        }
+
+        function setupEventListeners() {
+            const startBtn = document.getElementById('startBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const restartBtn = document.getElementById('restartBtn');
+            const speedRange = document.getElementById('speedRange');
+            const speedValue = document.getElementById('speedValue');
+
+            startBtn.addEventListener('click', () => {
+                gameController.start();
+                startBtn.textContent = 'Playing...';
+                startBtn.disabled = true;
+            });
+
+            pauseBtn.addEventListener('click', () => {
+                gameController.game.togglePause();
+                if (gameController.game.paused) {
+                    gameController.stop();
+                } else {
+                    gameController.startGameLoop();
+                }
+                gameController.render();
+            });
+
+            restartBtn.addEventListener('click', () => {
+                gameController.restart();
+                startBtn.textContent = 'Start Game';
+                startBtn.disabled = false;
+            });
+
+            speedRange.addEventListener('input', (e) => {
+                const speed = parseInt(e.target.value);
+                speedValue.textContent = speed + 'ms';
+                gameController.setSpeed(speed);
+            });
+
+            // Mobile controls
+            document.querySelectorAll('.dpad-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const direction = e.target.dataset.direction;
+                    let key;
+                    switch(direction) {
+                        case 'up': key = 'ArrowUp'; break;
+                        case 'down': key = 'ArrowDown'; break;
+                        case 'left': key = 'ArrowLeft'; break;
+                        case 'right': key = 'ArrowRight'; break;
+                    }
+                    if (key) {
+                        gameController.handleKeyPress(key);
+                    }
+                });
+            });
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initGame);
+    </script>
+</body>
+</html>

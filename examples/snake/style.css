@@ -1,0 +1,350 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+    color: #ffffff;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    color: #00ff00;
+    text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+header p {
+    color: #cccccc;
+    font-size: 1.1rem;
+}
+
+.game-area {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 30px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.game-info {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.info-item {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 10px 15px;
+    border-radius: 8px;
+    text-align: center;
+    min-width: 100px;
+}
+
+.info-item label {
+    display: block;
+    color: #cccccc;
+    font-size: 0.9rem;
+    margin-bottom: 5px;
+}
+
+.info-item span {
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.status.playing {
+    color: #00ff00;
+}
+
+.status.paused {
+    color: #ffff00;
+}
+
+.status.game-over {
+    color: #ff0000;
+}
+
+.game-canvas-container {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 20px;
+}
+
+#gameCanvas {
+    border: 2px solid #00ff00;
+    border-radius: 8px;
+    background: #000000;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+}
+
+.game-controls {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, #00ff00, #00cc00);
+    color: #000000;
+}
+
+.btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #00cc00, #00aa00);
+    transform: translateY(-2px);
+}
+
+.btn-primary:disabled {
+    background: #666666;
+    color: #999999;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: linear-gradient(135deg, #333333, #555555);
+    color: #ffffff;
+    border: 1px solid #666666;
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, #555555, #777777);
+    transform: translateY(-2px);
+}
+
+.speed-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.speed-control label {
+    font-weight: bold;
+}
+
+#speedRange {
+    width: 200px;
+    height: 6px;
+    border-radius: 3px;
+    background: #333333;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+#speedRange::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #00ff00;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+#speedRange::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #00ff00;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+#speedValue {
+    font-weight: bold;
+    color: #00ff00;
+    min-width: 60px;
+}
+
+.mobile-controls {
+    display: none;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.dpad {
+    display: grid;
+    grid-template-rows: 1fr 1fr 1fr;
+    gap: 5px;
+    width: 200px;
+    height: 200px;
+}
+
+.dpad-middle {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 5px;
+}
+
+.dpad-btn {
+    background: linear-gradient(135deg, #333333, #555555);
+    border: 2px solid #666666;
+    border-radius: 8px;
+    color: #ffffff;
+    font-size: 1.5rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.dpad-btn:active {
+    background: linear-gradient(135deg, #555555, #777777);
+    transform: scale(0.95);
+}
+
+.dpad-up, .dpad-down {
+    grid-column: 2;
+}
+
+.instructions {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.instructions h3 {
+    color: #00ff00;
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+}
+
+.instructions ul {
+    list-style: none;
+    padding-left: 0;
+}
+
+.instructions li {
+    padding: 5px 0;
+    color: #cccccc;
+    position: relative;
+    padding-left: 20px;
+}
+
+.instructions li:before {
+    content: "▶";
+    color: #00ff00;
+    position: absolute;
+    left: 0;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    header h1 {
+        font-size: 2rem;
+    }
+
+    header p {
+        font-size: 1rem;
+    }
+
+    .game-area {
+        padding: 15px;
+    }
+
+    .game-info {
+        justify-content: center;
+    }
+
+    .info-item {
+        min-width: 80px;
+        padding: 8px 10px;
+    }
+
+    #gameCanvas {
+        max-width: 100%;
+        height: auto;
+    }
+
+    .mobile-controls {
+        display: flex;
+    }
+
+    .speed-control {
+        flex-direction: column;
+        gap: 5px;
+    }
+
+    #speedRange {
+        width: 150px;
+    }
+
+    .btn {
+        padding: 8px 16px;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 0;
+    }
+
+    .game-info {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .info-item {
+        width: 100%;
+        max-width: 200px;
+    }
+
+    .game-controls {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .btn {
+        width: 100%;
+        max-width: 200px;
+    }
+
+    .dpad {
+        width: 150px;
+        height: 150px;
+    }
+
+    .dpad-btn {
+        font-size: 1.2rem;
+    }
+}

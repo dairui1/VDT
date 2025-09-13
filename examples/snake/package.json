@@ -1,0 +1,40 @@
+{
+  "name": "snake-demo",
+  "version": "1.0.0",
+  "description": "Simple Snake game demo for VDT testing",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "demo": "node demo.js",
+    "demo:auto": "node demo.js --auto",
+    "demo:ai": "node demo.js --ai",
+    "demo:perf": "node demo.js --performance",
+    "serve": "npx http-server . -p 8080 -c-1 -o",
+    "dev": "npx http-server . -p 8080 -c-1 -o index.html",
+    "test": "node demo.js && echo 'Console tests completed. Run npm run serve to test web version.'",
+    "clean": "echo 'Cleaning up temporary files...' && rm -rf node_modules/.cache"
+  },
+  "dependencies": {
+    "http-server": "^14.1.1"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "snake",
+    "game",
+    "debugging",
+    "vdt",
+    "canvas",
+    "javascript"
+  ],
+  "author": "VDT Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-repo/vdt"
+  },
+  "bugs": {
+    "url": "https://github.com/your-repo/vdt/issues"
+  },
+  "homepage": "https://github.com/your-repo/vdt#readme"
+}
