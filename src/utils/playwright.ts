@@ -1,6 +1,7 @@
 import { chromium, Browser, Page, BrowserContext } from 'playwright';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { EventEmitter } from 'events';
 import { ActionEvent, ConsoleEvent, NetworkEvent } from '../types/index.js';
 
 interface RecordingSession {
@@ -15,12 +16,16 @@ interface RecordingSession {
   snapshotDir: string;
 }
 
-export class PlaywrightManager {
+export class PlaywrightManager extends EventEmitter {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private page: Page | null = null;
   private recordings: Map<string, RecordingSession> = new Map();
   private sessionDir: string = '';
+
+  constructor() {
+    super();
+  }
 
   async initialize(): Promise<void> {
     this.browser = await chromium.launch({ headless: false });
@@ -48,6 +53,9 @@ export class PlaywrightManager {
         stack: msg.location() ? `${msg.location().url}:${msg.location().lineNumber}:${msg.location().columnNumber}` : undefined,
       };
 
+      // Emit for HUD listeners
+      this.emit('console_event', consoleEvent);
+
       // Write to console log if we have an active recording
       for (const recording of this.recordings.values()) {
         recording.logFiles.console.write(JSON.stringify(consoleEvent) + '\n');
@@ -64,6 +72,9 @@ export class PlaywrightManager {
         reqId: `net_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       };
 
+      // Emit for HUD listeners
+      this.emit('network_event', networkEvent);
+
       // Write to network log if we have an active recording
       for (const recording of this.recordings.values()) {
         recording.logFiles.network.write(JSON.stringify(networkEvent) + '\n');
@@ -79,6 +90,9 @@ export class PlaywrightManager {
         status: response.status(),
         reqId: `net_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       };
+
+      // Emit for HUD listeners
+      this.emit('network_event', networkEvent);
 
       // Write to network log if we have an active recording
       for (const recording of this.recordings.values()) {

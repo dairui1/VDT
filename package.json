@@ -8,8 +8,11 @@
     "vdt-mcp": "dist/bin.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm run build:hud && tsc",
+    "build:hud": "cd hud-ui && pnpm build",
+    "build:all": "pnpm -r build",
     "dev": "tsc --watch",
+    "dev:hud": "cd hud-ui && pnpm dev",
     "start": "node dist/server.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "eslint src/**/*.ts",

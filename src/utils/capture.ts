@@ -28,6 +28,8 @@ export class CaptureManager {
     const commands = config.commands || [];
     
     return new Promise((resolve, reject) => {
+      let settled = false; // Track if promise has been settled
+      
       const ptyProcess = spawn(shell, [], {
         cwd: config.cwd,
         env: { ...process.env, ...cleanEnv },
@@ -37,8 +39,21 @@ export class CaptureManager {
 
       const timeout = config.timeoutSec ? config.timeoutSec * 1000 : 30000;
       const timeoutHandle = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        
         ptyProcess.kill();
-        reject(new Error(`Command timed out after ${config.timeoutSec || 30} seconds`));
+        
+        // Resolve with partial summary instead of rejecting
+        resolve({
+          chunks: chunks.length > 0 ? chunks : [`logs/capture.ndjson`],
+          summary: { 
+            lines: totalLines, 
+            errors: errorCount,
+            timeout: true,
+            timeoutSec: config.timeoutSec || 30
+          }
+        });
       }, timeout);
 
       let buffer = '';
@@ -75,6 +90,9 @@ export class CaptureManager {
       });
 
       ptyProcess.onExit((exitData) => {
+        if (settled) return; // Don't double-settle
+        settled = true;
+        
         clearTimeout(timeoutHandle);
         
         const exitCode = typeof exitData === 'number' ? exitData : exitData.exitCode;

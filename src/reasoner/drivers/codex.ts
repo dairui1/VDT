@@ -46,8 +46,8 @@ User: ${userPrompt}`;
       // Execute codex CLI
       const result = await this.runCodexCLI(fullPrompt, context.timeout);
       
-      // Parse and validate result
-      const parsed = JSON.parse(result);
+      // Parse and validate result with retry logic
+      const parsed = this.parseAndValidateJSON(result);
       return this.validateResult(parsed);
 
     } catch (error) {
@@ -178,5 +178,57 @@ User: ${userPrompt}`;
       child.stdin.write(prompt);
       child.stdin.end();
     });
+  }
+
+  private parseAndValidateJSON(rawOutput: string): any {
+    // Try to extract JSON from the output - sometimes LLMs wrap JSON in markdown
+    let jsonStr = rawOutput.trim();
+    
+    // Remove markdown code blocks if present
+    const jsonBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonBlockMatch) {
+      jsonStr = jsonBlockMatch[1].trim();
+    }
+    
+    // Try to find JSON within the text if it's not the entire response
+    if (!jsonStr.startsWith('{') && !jsonStr.startsWith('[')) {
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[0];
+      }
+    }
+    
+    try {
+      const parsed = JSON.parse(jsonStr);
+      
+      // Basic validation - ensure it has the expected structure
+      if (typeof parsed !== 'object' || parsed === null) {
+        throw new Error('Response is not a JSON object');
+      }
+      
+      // Validate required fields exist (they'll be normalized in validateResult)
+      if (!parsed.hasOwnProperty('insights') && !parsed.hasOwnProperty('suspects')) {
+        console.warn('[VDT] Codex response missing expected fields, using fallback structure');
+        return {
+          insights: [],
+          suspects: [],
+          next_steps: [parsed.toString ? parsed.toString() : 'Failed to parse response'],
+          notes: `Raw response: ${rawOutput.substring(0, 500)}...`
+        };
+      }
+      
+      return parsed;
+    } catch (parseError) {
+      console.warn('[VDT] Failed to parse Codex JSON response:', parseError);
+      console.warn('[VDT] Raw response:', rawOutput.substring(0, 500));
+      
+      // Return a fallback structure
+      return {
+        insights: [],
+        suspects: [],
+        next_steps: ['Failed to parse reasoner response'],
+        notes: `Parse error: ${parseError instanceof Error ? parseError.message : 'Unknown error'}. Raw: ${rawOutput.substring(0, 200)}...`
+      };
+    }
   }
 }

@@ -7,9 +7,9 @@ const DEFAULT_CONFIG: ReasonerConfig = {
   fallback_backend: 'openai',
   backends: {
     codex: {
-      type: 'mcp',
+      type: 'cli',
       cmd: 'codex',
-      args: ['-m', 'gpt-5', '-c', 'model_reasoning_effort=high', 'mcp'],
+      args: ['-m', 'gpt-5', '-c', 'model_reasoning_effort=high', 'exec'],
       cost_hint: 'high',
       supports: ['analyze_log', 'propose_patch', 'review_patch'],
     },

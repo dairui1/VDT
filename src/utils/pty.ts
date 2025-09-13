@@ -1,11 +1,16 @@
 import * as pty from 'node-pty';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { EventEmitter } from 'events';
 import { DevServerEvent } from '../types/index.js';
 
-export class PTYManager {
+export class PTYManager extends EventEmitter {
   private processes: Map<string, pty.IPty> = new Map();
   private streams: Map<string, fs.FileHandle> = new Map();
+
+  constructor() {
+    super();
+  }
 
   async startDevServer(
     sid: string,
@@ -53,6 +58,9 @@ export class PTYManager {
       
       // Write to log file
       logFile.write(JSON.stringify(event) + '\n');
+      
+      // Emit event for HUD listeners
+      this.emit('terminal_output', { sid, data: data.replace(/\r\n/g, '\n').replace(/\r/g, '\n') });
     });
 
     ptyProcess.onExit((exitData: { exitCode: number; signal?: number }) => {
@@ -64,6 +72,13 @@ export class PTYManager {
       };
       
       logFile.write(JSON.stringify(event) + '\n');
+      
+      // Emit event for HUD listeners
+      this.emit('terminal_output', { 
+        sid, 
+        data: `Process exited with code ${exitData.exitCode}${exitData.signal ? ` (signal: ${exitData.signal})` : ''}\n` 
+      });
+      
       this.cleanup(sid);
     });
 

@@ -42,9 +42,9 @@ export class VDTTools {
       const session = await this.sessionManager.createSession(repoRoot, note, ttlDays);
       
       const links = [
-        this.sessionManager.getResourceLink(session.sid, 'analysis/buglens.md'),
-        this.sessionManager.getResourceLink(session.sid, 'logs/capture.ndjson'),
-        this.sessionManager.getResourceLink(session.sid, 'meta.json')
+        `vdt://sessions/${session.sid}/`,
+        this.sessionManager.getResourceLink(session.sid, 'meta.json'),
+        this.sessionManager.getResourceLink(session.sid, 'logs/capture.ndjson')
       ];
 
       const response: ToolResponse = {
@@ -127,6 +127,12 @@ export class VDTTools {
         
         results.push({
           file: targetFile,
+          patchLink: result.diff ? (() => {
+            const path = require('path');
+            const fileName = path.basename(targetFile, path.extname(targetFile));
+            const fileHash = Buffer.from(targetFile).toString('base64').replace(/[=/+]/g, '').substring(0, 8);
+            return this.sessionManager.getResourceLink(sid, `patches/patch-${fileName}-${fileHash}.diff`);
+          })() : null,
           ...result
         });
       }
@@ -134,13 +140,12 @@ export class VDTTools {
       const response: ToolResponse = {
         data: {
           results,
-          patchLink: results.some(r => r.diff) ? 
-            this.sessionManager.getResourceLink(sid, 'patches/0001-write-log.diff') : null,
           applied: !dryRun,
           totalModifications: results.reduce((acc, r) => {
             const mods = r.hints.find(h => h.includes('Instrumented'))?.match(/\d+/);
             return acc + (mods ? parseInt(mods[0]) : 0);
-          }, 0)
+          }, 0),
+          patchLinks: results.filter(r => r.patchLink).map(r => r.patchLink)
         }
       };
 

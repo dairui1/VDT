@@ -410,6 +410,7 @@ class VDTServer {
                 description: `NDJSON formatted execution logs`,
                 mimeType: 'application/x-ndjson'
               },
+              // Analysis artifacts
               {
                 uri: `vdt://sessions/${sessionId}/analysis/buglens.md`,
                 name: `Session ${sessionId} - BugLens Report`,
@@ -417,9 +418,54 @@ class VDTServer {
                 mimeType: 'text/markdown'
               },
               {
+                uri: `vdt://sessions/${sessionId}/analysis/buglens-web.md`,
+                name: `Session ${sessionId} - BugLens Web Report`,
+                description: `Web-formatted debugging analysis with HUD integration`,
+                mimeType: 'text/markdown'
+              },
+              // Web HUD artifacts
+              {
+                uri: `vdt://sessions/${sessionId}/logs/devserver.ndjson`,
+                name: `Session ${sessionId} - Dev Server Logs`,
+                description: `Development server output and events`,
+                mimeType: 'application/x-ndjson'
+              },
+              {
+                uri: `vdt://sessions/${sessionId}/logs/actions.ndjson`,
+                name: `Session ${sessionId} - Browser Actions`,
+                description: `Playwright browser action recordings`,
+                mimeType: 'application/x-ndjson'
+              },
+              {
+                uri: `vdt://sessions/${sessionId}/logs/console.ndjson`,
+                name: `Session ${sessionId} - Browser Console`,
+                description: `Browser console messages and errors`,
+                mimeType: 'application/x-ndjson'
+              },
+              {
+                uri: `vdt://sessions/${sessionId}/logs/network.ndjson`,
+                name: `Session ${sessionId} - Network Activity`,
+                description: `Browser network requests and responses`,
+                mimeType: 'application/x-ndjson'
+              },
+              // Reasoner artifacts
+              {
+                uri: `vdt://sessions/${sessionId}/analysis/reasoner_analyze.json`,
+                name: `Session ${sessionId} - Log Analysis`,
+                description: `AI reasoner analysis of captured logs`,
+                mimeType: 'application/json'
+              },
+              {
+                uri: `vdt://sessions/${sessionId}/analysis/reasoner_patch.json`,
+                name: `Session ${sessionId} - Patch Suggestions`,
+                description: `AI reasoner proposed fixes and patches`,
+                mimeType: 'application/json'
+              },
+              // Legacy patch file (keeping for backward compatibility)
+              {
                 uri: `vdt://sessions/${sessionId}/patches/0001-write-log.diff`,
-                name: `Session ${sessionId} - Instrumentation Patch`,
-                description: `Code instrumentation diff patch`,
+                name: `Session ${sessionId} - Legacy Instrumentation Patch`,
+                description: `Legacy single-file instrumentation diff patch`,
                 mimeType: 'text/x-diff'
               }
             );

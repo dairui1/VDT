@@ -85,10 +85,15 @@ export class ASTInstrumenter {
 
     // Save diff to session directory if provided
     if (sessionDir && diff.trim()) {
-      const patchPath = `${sessionDir}/patches/0001-write-log.diff`;
+      // Generate unique patch filename based on the target file
+      const path = await import('path');
+      const fileName = path.basename(filePath, path.extname(filePath));
+      const fileHash = Buffer.from(filePath).toString('base64').replace(/[=/+]/g, '').substring(0, 8);
+      const patchPath = `${sessionDir}/patches/patch-${fileName}-${fileHash}.diff`;
+      
       await fs.mkdir(`${sessionDir}/patches`, { recursive: true });
       await fs.writeFile(patchPath, diff);
-      hints.push(`Diff saved to patches/0001-write-log.diff`);
+      hints.push(`Diff saved to patches/patch-${fileName}-${fileHash}.diff`);
     }
 
     return {
@@ -104,7 +109,12 @@ export class ASTInstrumenter {
 
   async applyInstrumentation(filePath: string, sessionDir: string): Promise<{ success: boolean; message: string }> {
     try {
-      const patchPath = `${sessionDir}/patches/0001-write-log.diff`;
+      // Generate unique patch filename based on the target file
+      const path = await import('path');
+      const fileName = path.basename(filePath, path.extname(filePath));
+      const fileHash = Buffer.from(filePath).toString('base64').replace(/[=/+]/g, '').substring(0, 8);
+      const patchPath = `${sessionDir}/patches/patch-${fileName}-${fileHash}.diff`;
+      
       const patchContent = await fs.readFile(patchPath, 'utf-8');
       
       // Parse the diff and apply it
@@ -115,15 +125,31 @@ export class ASTInstrumenter {
         return { success: false, message: 'No valid patches found' };
       }
 
-      const patch = patches[0];
-      const result = Diff.applyPatch(originalContent, patch);
+      // Find the patch that matches this file
+      let targetPatch = null;
+      for (const patch of patches) {
+        if (patch.oldFileName === filePath || patch.newFileName === filePath || 
+            patch.oldFileName?.endsWith(path.basename(filePath)) || 
+            patch.newFileName?.endsWith(path.basename(filePath))) {
+          targetPatch = patch;
+          break;
+        }
+      }
+      
+      if (!targetPatch) {
+        // If no matching patch found, use the first one (backwards compatibility)
+        targetPatch = patches[0];
+      }
+
+      const result = Diff.applyPatch(originalContent, targetPatch);
       
       if (result === false) {
         return { success: false, message: 'Failed to apply patch - content may have changed' };
       }
 
       // Backup original file
-      const backupPath = `${sessionDir}/patches/original-${Date.now()}.backup`;
+      const timestamp = Date.now();
+      const backupPath = `${sessionDir}/patches/original-${fileName}-${fileHash}-${timestamp}.backup`;
       await fs.writeFile(backupPath, originalContent);
 
       // Apply the changes
@@ -131,7 +157,7 @@ export class ASTInstrumenter {
       
       return { 
         success: true, 
-        message: `Successfully applied instrumentation. Backup saved to patches/original-${Date.now()}.backup` 
+        message: `Successfully applied instrumentation. Backup saved to patches/original-${fileName}-${fileHash}-${timestamp}.backup` 
       };
     } catch (error) {
       return { 

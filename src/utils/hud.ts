@@ -33,8 +33,33 @@ export class HudManager {
     // Start dev server
     await ptyManager.startDevServer(sid, dev.cmd, dev.cwd, dev.env, sessionDir);
 
+    // Setup PTY event listeners for WebSocket forwarding
+    ptyManager.on('terminal_output', (eventData: { sid: string; data: string }) => {
+      if (eventData.sid === sid) {
+        this.broadcastToSession(sid, {
+          type: 'terminal_output',
+          data: eventData.data
+        });
+      }
+    });
+
     // Start browser
     await playwrightManager.startBrowser(browse.entryUrl, sessionDir);
+
+    // Setup Playwright event listeners for WebSocket forwarding
+    playwrightManager.on('console_event', (consoleEvent: any) => {
+      this.broadcastToSession(sid, {
+        type: 'console_event',
+        data: consoleEvent
+      });
+    });
+
+    playwrightManager.on('network_event', (networkEvent: any) => {
+      this.broadcastToSession(sid, {
+        type: 'network_event', 
+        data: networkEvent
+      });
+    });
 
     // Create Express app and WebSocket server
     const app = express.default();
@@ -182,6 +207,18 @@ export class HudManager {
         error: error instanceof Error ? error.message : 'Unknown error' 
       }));
     }
+  }
+
+  private broadcastToSession(sid: string, message: any): void {
+    const session = this.sessions.get(sid);
+    if (!session) return;
+
+    const messageStr = JSON.stringify(message);
+    session.wss.clients.forEach((client: WebSocket.WebSocket) => {
+      if (client.readyState === WebSocket.WebSocket.OPEN) {
+        client.send(messageStr);
+      }
+    });
   }
 
   private async findAvailablePort(startPort: number): Promise<number> {
