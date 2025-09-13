@@ -6,7 +6,7 @@
 
 ## 0. 目标与边界
 
-**目标（v0.1）**
+**目标（v0.2）**
 - 在一个 HUD 内同时完成：
   - 启/停 dev 进程（xterm 终端流）
   - 浏览器会话（捕获操作路径、URL、DOM 选择器、截图、console/error、网络摘要）
@@ -52,7 +52,7 @@
 
 ---
 
-## 2. MCP 接口（v0.1）
+## 2. MCP 接口（v0.2）
 
 ### 2.1 Prompts（3 个）
 - `vdt/debugspec/write-log`：约束“只加日志、不改逻辑”，统一 ndjson 字段（ts, level, module, func, msg, kv）
@@ -65,7 +65,7 @@
 
 1) vdt_start_session
 - in: `{ repoRoot?, note?, ttlDays? }`
-- out: `{ sid, links:["vdt://sessions/{sid}/analysis/buglens-web.md"] }`
+- out: `{ sid, links:["vdt://sessions/{sid}/"] }`  // 返回会话根目录；BugLens 在分析完成后单独返回
 - 动作：创建 `.vdt/sessions/{sid}` 与 `meta.json`
 
 2) hud_start（起 dev + 浏览器 + 事件流）
@@ -76,8 +76,8 @@
   "dev": { "cmd": "npm run dev", "cwd": ".", "env": {} },
   "browse": { "entryUrl": "http://localhost:5173", "autoOpen": true },
   "capture": {
-    "screenshot": "onAction",           // "none" | "onAction" | "interval(1000)"
-    "network": "summary",               // "off" | "summary"
+    "screenshot": { "mode": "onAction" }, // {mode:"none"|"onAction"|"interval", ms?:number}
+    "network": "summary",                 // "off" | "summary"
     "redact": { "patterns": ["Bearer\\s+\\S+"] }
   }
 }
@@ -105,7 +105,10 @@
   "dev": { "status": "running|exited", "pid": 12345 },
   "browser": { "status": "ready|closed", "pages": 1 },
   "recent": { "actions": 3, "errors": 0, "consoleErrors": 1 },
-  "links": ["...ndjson", "...png"]
+  "links": [
+    "vdt://sessions/<sid>/logs/devserver.ndjson",
+    "vdt://sessions/<sid>/snapshots/replay_.../act_00012.png"
+  ]
 }
 ```
 
@@ -154,8 +157,7 @@
     "vdt://sessions/<sid>/logs/console.replay.ndjson",
     "vdt://sessions/<sid>/logs/network.replay.ndjson",
     "vdt://sessions/<sid>/logs/errors.replay.ndjson",
-    "vdt://sessions/<sid>/snapshots/replay_2025-09-13/act_00012.png",
-    "vdt://sessions/<sid>/analysis/buglens-web.md"
+    "vdt://sessions/<sid>/snapshots/replay_2025-09-13/act_00012.png"
   ]
 }
 ```
@@ -164,6 +166,8 @@
 - in: `{ sid, focus?, topk?:3 }`
 - out: `{ links:["vdt://.../analysis/buglens-web.md"], findings }`
 - 读取本次 capture/replay ndjson + 快照，按 stepId/时间窗关联 console/error/network
+
+> 说明：BugLens-Web 仅由 `analyze_web_capture` 生成；`replay_run` 只负责执行与采集，避免职责重叠。
 
 > 以上所有工具的大对象一律用 ResourceLink（`vdt://sessions/...`）返回，避免上下文爆炸。
 
@@ -176,7 +180,7 @@ export type HudStartIn = {
   dev: { cmd: string; cwd: string; env?: Record<string,string> };
   browse: { entryUrl: string; autoOpen?: boolean };
   capture?: {
-    screenshot?: 'none'|'onAction'|`interval(${number})`;
+    screenshot?: { mode: 'none'|'onAction'|'interval'; ms?: number };
     network?: 'off'|'summary';
     redact?: { patterns?: string[] };
   };
@@ -192,7 +196,7 @@ export type RecordStartIn = {
   sid: string;
   entryUrl: string;
   selectors?: { prefer: string[] };
-  screenshot?: 'none'|'onAction'|`interval(${number})`;
+  screenshot?: { mode: 'none'|'onAction'|'interval'; ms?: number };
 };
 
 export type RecordStopIn = {
@@ -314,6 +318,7 @@ console（console.*.ndjson）
 - 确定性：注入 `seed`；冻结 `Date.now`；关闭动画（prefers-reduced-motion）；必要 API mock
 - 动作容错：click→dblclick 回退；input 优先 `fill()`；drag 从最少路径到细粒度回退
 - 证据对齐：以 `stepId` 时间窗（±500ms）关联 console/network/error，BugLens 标注“哪一步导致错误”
+- 步骤标识稳定性：录制产生的 `stepId` 在重放中应保持一致；若 DOM/导航差异导致变更，则使用时间窗 + `stepIdHint` 作为降级，并在报告中标注不确定性。
 
 ---
 
@@ -322,6 +327,8 @@ console（console.*.ndjson）
 - 脱敏：`redact.patterns` 应用于 devserver/console/network 文本（常见令牌/邮箱/手机号规则）
 - 最小写入：仅写 `.vdt/sessions/{sid}`；插桩改码由 `write_log` 工具，受 allowlist 管控；默认 `dryRun` 输出 diff 供审核
 - TTL：session 产物默认 7 天；提供 `purge_session`（v0.2）
+- Dev 进程 `env` 白名单：`hud_start.dev.env` 仅允许 `PATH`,`NODE_OPTIONS`,`HTTP_PROXY`,`HTTPS_PROXY` 等少量白名单键；其他键忽略或需显式 `--unsafe-env` 开关。
+- 资源访问：所有产物以 `vdt://sessions/{sid}/...` 返回；MCP 需实现 `list_resources/read_resource` 将其映射到本地文件（仅读）。
 
 ---
 
@@ -360,6 +367,13 @@ console（console.*.ndjson）
 ---
 
 ## 10. 备注
-- 与现有 MVP（`do_capture` + `analyze_debug_log`）兼容：Web HUD 的 ndjson 结构与分析器共享
+- 兼容策略：沿用 v0.1 工具（`write_log`/`do_capture`/`analyze_debug_log`）不变；Web HUD 新增事件由 `analyze_web_capture` 消费。
+- 如需与 v0.1 分析器互通，可提供轻量 ETL 将 actions/console/network 归一化为统一事件模型（`ts, level, module, func, msg, kv`）。
 - 示例工程优先复用现有 `examples/gobang`，后续补 `examples/excalidraw-like` 骨架
 
+---
+
+附：沿用的 v0.1 工具
+- `write_log`（AST 插桩，幂等，受 allowlist 控制）
+- `do_capture`（shell 捕获，ndjson 输出）
+- `analyze_debug_log`（读取 `capture.ndjson` 的基础分析）
