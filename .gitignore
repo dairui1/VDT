@@ -45,3 +45,5 @@ Thumbs.db
 test-integration/
 test-vdt/
 /.worktrees/
+
+src/hud/.next/

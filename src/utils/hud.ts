@@ -1,8 +1,10 @@
 import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
+import { fileURLToPath } from 'url';
 import { HudStartIn, HudStartOut, HudStatusOut, LogEvent } from '../types/index.js';
-import open from 'open';
+import * as openModule from 'open';
+const open = (openModule as unknown as { default?: (target: string) => Promise<unknown> }).default ?? (openModule as unknown as (target: string) => Promise<unknown>);
 
 interface HudSession {
   sessionId: string;
@@ -16,12 +18,44 @@ export class HudManager {
   private sessions = new Map<string, HudSession>();
   private basePort = 3900;
 
+  private async pathExists(pathname: string): Promise<boolean> {
+    try {
+      await fs.access(pathname);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async resolveHudDir(): Promise<string> {
+    // Resolve package root from compiled dist file location
+    const currentFile = fileURLToPath(import.meta.url);
+    const currentDir = dirname(currentFile); // dist/utils
+    const distDir = join(currentDir, '..');
+    const packageRoot = join(distDir, '..');
+
+    const candidates = [
+      // When running from an installed package
+      join(packageRoot, 'src', 'hud'),
+      // Fallback to CWD (development)
+      join(process.cwd(), 'src', 'hud')
+    ];
+
+    for (const dir of candidates) {
+      if (await this.pathExists(join(dir, 'server.js'))) {
+        return dir;
+      }
+    }
+
+    throw new Error('Failed to locate HUD directory. Expected src/hud with server.js');
+  }
+
   async startStandaloneHud(port?: number): Promise<{ hudUrl: string; port: number }> {
     const targetPort = port || await this.findAvailablePort();
     const sessionId = 'standalone-' + Date.now();
     
     // Start HUD server
-    const hudDir = join(process.cwd(), 'src', 'hud');
+    const hudDir = await this.resolveHudDir();
     const hudProcess = spawn('node', ['server.js'], {
       cwd: hudDir,
       env: {
@@ -91,7 +125,7 @@ export class HudManager {
     const port = await this.findAvailablePort();
     
     // Start HUD server
-    const hudDir = join(process.cwd(), 'src', 'hud');
+    const hudDir = await this.resolveHudDir();
     const hudProcess = spawn('node', ['server.js'], {
       cwd: hudDir,
       env: {

@@ -1,6 +1,6 @@
 {
   "name": "vdt-mcp",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Visual Debugging Tool - MCP Server for debugging workflows (KISS v0.3)",
   "type": "module",
   "main": "dist/server.js",
@@ -15,11 +15,14 @@
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node ./scripts/postinstall-node-pty.cjs",
-    "hud:dev": "cd src/hud && npm run dev",
-    "hud:build": "cd src/hud && npm run build",
-    "hud:start": "cd src/hud && npm start",
-    "hud:install": "cd src/hud && npm install",
-    "test:hud": "node test-hud.js"
+    "hud:install": "cd src/hud && pnpm install || npm install",
+    "hud:dev": "cd src/hud && pnpm run dev || npm run dev",
+    "hud:build": "cd src/hud && pnpm run build || npm run build", 
+    "hud:start": "cd src/hud && pnpm start || npm start",
+    "hud:standalone": "node scripts/start-hud-demo.js",
+    "hud:test": "node scripts/test-hud-simple.js",
+    "test:hud": "node test-hud.js",
+    "prepack": "npm run build && npm run hud:install && npm run hud:build"
   },
   "keywords": [
     "mcp",
@@ -33,10 +36,26 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "diff": "^5.1.0",
     "node-pty": "^1.0.0",
+    "next": "15.4.5",
     "open": "^8.4.0",
     "playwright": "^1.40.0",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "uuid": "^9.0.0"
   },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "optionalDependencies": {
+    "ws": "^8.18.3"
+  },
+  "files": [
+    "dist/**",
+    "src/hud/server.js",
+    "src/hud/.next/**",
+    "src/hud/public/**"
+  ],
   "devDependencies": {
     "@types/diff": "^5.0.0",
     "@types/jest": "^29.0.0",

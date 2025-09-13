@@ -68,7 +68,7 @@ export function Terminal({ sessionId, className }: TerminalProps) {
 
         // Connect to WebSocket for terminal communication
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const wsUrl = `${protocol}//${window.location.host}/api/terminal/websocket?sessionId=${sessionId}`
+        const wsUrl = `${protocol}//${window.location.host}/api/websocket?type=terminal&sessionId=${sessionId}`
         const ws = new WebSocket(wsUrl)
         wsRef.current = ws
 

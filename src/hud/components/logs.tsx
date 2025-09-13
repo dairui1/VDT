@@ -30,7 +30,7 @@ export function Logs({ sessionId, className }: LogsProps) {
   useEffect(() => {
     // Connect to WebSocket for real-time logs
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/logs/websocket?sessionId=${sessionId}`
+    const wsUrl = `${protocol}//${window.location.host}/api/websocket?type=logs&sessionId=${sessionId}`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 

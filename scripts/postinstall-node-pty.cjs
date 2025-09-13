@@ -91,16 +91,31 @@ if (canRequireNodePty()) {
   warn('node-pty still not loadable after rebuild.');
 }
 
-// Also install HUD dependencies if HUD directory exists
+// Also install HUD dependencies in dev setups.
+// Skip if HUD is already built (package includes .next) or env opts out.
 const hudDir = path.join(__dirname, '..', 'src', 'hud');
-if (fs.existsSync(hudDir) && fs.existsSync(path.join(hudDir, 'package.json'))) {
-  log('Installing HUD dependencies...');
+const hudNextDir = path.join(hudDir, '.next');
+if (
+  process.env.VDT_SKIP_HUD_POSTINSTALL !== '1' &&
+  fs.existsSync(hudDir) &&
+  fs.existsSync(path.join(hudDir, 'package.json')) &&
+  !fs.existsSync(hudNextDir)
+) {
+  log('Installing HUD dependencies (dev only)...');
   try {
-    const result = spawnSync('pnpm', ['install'], { 
-      cwd: hudDir, 
+    let result = spawnSync('pnpm', ['install'], {
+      cwd: hudDir,
       stdio: 'inherit',
-      timeout: 60000 // 60 seconds timeout
+      timeout: 60000
     });
+    if (result.status !== 0) {
+      warn('pnpm not available or failed. Falling back to npm...');
+      result = spawnSync('npm', ['install'], {
+        cwd: hudDir,
+        stdio: 'inherit',
+        timeout: 60000
+      });
+    }
     if (result.status === 0) {
       log('HUD dependencies installed successfully.');
     } else {
@@ -109,7 +124,7 @@ if (fs.existsSync(hudDir) && fs.existsSync(path.join(hudDir, 'package.json'))) {
   } catch (error) {
     warn(`HUD dependencies installation error: ${error.message}`);
     warn('You may need to manually install HUD dependencies with:');
-    warn('  cd src/hud && pnpm install');
+    warn('  cd src/hud && pnpm install  # or: npm install');
   }
 }
 
