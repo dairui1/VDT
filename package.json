@@ -13,7 +13,8 @@
     "start": "node dist/server.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "eslint src/**/*.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node ./scripts/postinstall-node-pty.cjs"
   },
   "keywords": [
     "mcp",
