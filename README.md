@@ -64,23 +64,20 @@ pnpm run build
 
 ### Claude Code
 
-配置 VDT MCP 服务器：
+配置 VDT MCP 服务器有两种方式：
 
-1. 在项目根目录创建或编辑 `.claude_code_config.json`：
+#### 方式一：使用命令行工具（推荐）
 
-```json
-{
-  "mcpServers": {
-    "vdt": {
-      "command": "node",
-      "args": ["./dist/server.js"],
-      "cwd": "/path/to/VDT"
-    }
-  }
-}
+```bash
+claude mcp add vdt node /Users/agrimonia/playground/VDT/dist/server.js
 ```
 
-2. 重启 Claude Code 以加载配置
+其他管理命令：
+- `claude mcp list` - 查看已配置的服务器
+- `claude mcp remove vdt` - 移除服务器
+- `claude mcp test vdt` - 测试连接
+
+配置完成后重启 Claude Code 以加载配置。
 
 ### GitHub Copilot / Codex
 

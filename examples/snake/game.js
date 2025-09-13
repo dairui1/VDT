@@ -15,11 +15,13 @@ export class SnakeGame {
     }
 
     generateFood() {
-        // BUG #2: Food can be generated on snake body - removed collision check
-        let food = {
-            x: Math.floor(Math.random() * this.width),
-            y: Math.floor(Math.random() * this.height)
-        };
+        let food;
+        do {
+            food = {
+                x: Math.floor(Math.random() * this.width),
+                y: Math.floor(Math.random() * this.height)
+            };
+        } while (this.snake.some(segment => segment.x === food.x && segment.y === food.y));
         return food;
     }
 
