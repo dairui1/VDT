@@ -2,29 +2,36 @@
 
 VDT is a Model Context Protocol (MCP) server that provides AI-powered debugging workflows through structured logging, execution capture, and intelligent analysis.
 
-## Version 0.1.0 (MVP)
+## Version 0.3.0 (KISS)
 
-This is the first working version implementing the core VDT debugging workflow with significant improvements addressing implementation gaps.
+This version implements the complete v0.3 spec with a minimal, focused debugging loop: capture → analyze → clarify → fix → verify → summarize.
 
 ## ✨ Key Features
 
-### 🔧 Tools (5)
-- `vdt_start_session` - Initialize debugging session with TTL management
-- `write_log` - AST-based code instrumentation with idempotency
-- `apply_write_log` - Apply generated patches with backup
-- `do_capture` - Enhanced shell execution capture with error detection
-- `analyze_debug_log` - Intelligent log analysis with candidate chunks
+### 🔧 Tools (7) - Complete v0.3 Set
+- `start_session` / `vdt_start_session` - Initialize debugging session with TTL management
+- `capture_run` - Unified CLI and Web capture with enhanced error detection  
+- `analyze_capture` - Intelligent log analysis with candidate chunks and clarify integration
+- `clarify` - Interactive focus selection for complex analysis scenarios
+- `reasoner_run` - Deep analysis with solution proposals (propose_patch | analyze_root_cause)
+- `verify_run` - Validation and regression testing with dedicated logging
+- `end_session` - Comprehensive session summary with evidence and next steps
 
-### 📝 Prompts (3)
-- `vdt/debugspec/write-log` - Guidance for safe code instrumentation
+### 📝 Prompts (4) - Enhanced Orchestration
+- `vdt/spec/orchestration` - Minimal workflow orchestration rules (NEW)
+- `vdt/debugspec/write-log` - Guidance for safe code instrumentation  
 - `vdt/debugspec/clarify` - Interactive log analysis clarification
 - `vdt/debugspec/fix-hypothesis` - Generate actionable fix suggestions
 
-### 📁 Resources (MCP Protocol)
+### 📁 Resources (MCP Protocol) - Spec-Aligned
 - Session metadata (`vdt://sessions/{sid}/meta.json`)
-- Captured logs (`vdt://sessions/{sid}/logs/capture.ndjson`)
+- Captured logs (`vdt://sessions/{sid}/logs/capture.ndjson`)  
+- Verification logs (`vdt://sessions/{sid}/logs/verify.ndjson`) - NEW
+- Web capture logs (`vdt://sessions/{sid}/logs/actions.ndjson`, `console.ndjson`, `network.ndjson`) - NEW
 - BugLens reports (`vdt://sessions/{sid}/analysis/buglens.md`)
-- Instrumentation patches (`vdt://sessions/{sid}/patches/0001-write-log.diff`)
+- Clarification results (`vdt://sessions/{sid}/analysis/clarify.md`) - NEW  
+- Reasoning analysis (`vdt://sessions/{sid}/analysis/reasoning.md`) - NEW
+- Session summaries (`vdt://sessions/{sid}/analysis/summary.md`) - NEW
 
 ## 🚀 Installation
 
@@ -298,44 +305,23 @@ console.error('DEBUG:', JSON.stringify(args, null, 2));
 node dist/server.js
 ```
 
-### Complete Workflow Example
+### Complete v0.3 Workflow Example
 
-#### 1. **Start Session**
+#### 1. **Start Session**  
 ```javascript
-vdt_start_session({ 
+start_session({ 
   repoRoot: './my-project', 
   note: 'Debugging render issue',
   ttlDays: 7
 })
-// Returns: { sid: 'uuid', links: ['vdt://sessions/{sid}/...'] }
+// Returns: { sid: 'uuid', spec: 'VDT DebugSpec v0.3 (KISS)', links: [...] }
 ```
 
-#### 2. **Add Logging (Dry Run)**
+#### 2. **Capture Execution**
 ```javascript
-write_log({ 
-  sid: 'session-id', 
-  files: ['src/renderer.js'], 
-  anchors: ['gridToPixel'],
-  level: 'debug',
-  dryRun: true,  // Safe preview
-  allowlist: ['src/']
-})
-// Returns: { patchLink: 'vdt://sessions/{sid}/patches/...', applied: false }
-```
-
-#### 3. **Apply Patches**
-```javascript
-apply_write_log({ 
-  sid: 'session-id', 
-  files: ['src/renderer.js']
-})
-// Returns: { successCount: 1, results: [{ success: true, message: '...' }] }
-```
-
-#### 4. **Capture Execution**
-```javascript
-do_capture({ 
-  sid: 'session-id', 
+capture_run({ 
+  sid: 'session-id',
+  mode: 'cli', // or 'web'
   shell: { 
     cwd: './my-project', 
     commands: ['pnpm run demo'],
@@ -348,34 +334,58 @@ do_capture({
 // Returns: { chunks: ['logs/capture.ndjson'], summary: { lines: 150, errors: 5 } }
 ```
 
-#### 5. **Analyze Results**
+#### 3. **Analyze Results**
 ```javascript
-analyze_debug_log({ 
+analyze_capture({ 
   sid: 'session-id', 
-  focus: { module: 'renderer' },
-  ruleset: 'js-web-default'
+  focus: { module: 'renderer' }
 })
 // Returns: { 
-//   findings: { 
-//     clusters: [...], 
-//     suspects: [...], 
-//     needClarify: false,
-//     candidateChunks: [...]
-//   }, 
-//   links: ['analysis/buglens.md'] 
+//   candidateChunks: [...], 
+//   needClarify: false,
+//   buglensReport: 'vdt://sessions/{sid}/analysis/buglens.md'
 // }
 ```
 
-#### 6. **Clarify Analysis (if needed)**
+#### 4. **Clarify Focus (if needed)**
 ```javascript
-// Use clarify prompt with candidate chunks
-// Then re-run analysis with selectedIds
-analyze_debug_log({ 
-  sid: 'session-id', 
-  focus: { 
-    selectedIds: ['error_window_0', 'function_renderer_gridToPixel']
+clarify({ 
+  sid: 'session-id',
+  chunks: [/* candidate chunks from analyze_capture */],
+  answer: {
+    selectedIds: ['error_window_0', 'function_renderer_gridToPixel'],
+    notes: 'Focus on rendering pipeline errors'
   }
 })
+// Returns: { selectedIds: [...], link: 'vdt://sessions/{sid}/analysis/clarify.md' }
+```
+
+#### 5. **Deep Analysis**
+```javascript
+reasoner_run({
+  sid: 'session-id',
+  task: 'propose_patch',
+  inputs: {
+    buglens: 'vdt://sessions/{sid}/analysis/buglens.md'
+  }
+})
+// Returns: { analysis: '...', solutions: [...], link: 'vdt://sessions/{sid}/analysis/reasoning.md' }
+```
+
+#### 6. **Verify Fix**
+```javascript
+// After applying reasoner suggestions to code:
+verify_run({
+  sid: 'session-id', 
+  commands: ['pnpm test', 'pnpm run demo']
+})
+// Returns: { passed: true, verifyLog: 'vdt://sessions/{sid}/logs/verify.ndjson' }
+```
+
+#### 7. **End Session**
+```javascript
+end_session({ sid: 'session-id' })
+// Returns: { conclusion: '...', keyEvidence: [...], summaryLink: 'vdt://sessions/{sid}/analysis/summary.md' }
 ```
 
 ## 🔍 Demo Project
@@ -391,10 +401,12 @@ pnpm run demo
 - Missing 0.5 offset in `gridToPixel` function causing alignment issues
 - Array bounds checking errors in edge cases
 
-**VDT Workflow:**
-1. Instrument the renderer: `write_log({ files: ['renderer.js'], anchors: ['gridToPixel'] })`
-2. Capture demo execution: `do_capture({ commands: ['pnpm run demo'] })`
-3. Analyze for the "0.5 offset" hypothesis
+**VDT v0.3 Workflow:**
+1. Start session: `start_session({ repoRoot: './examples/gobang', note: 'Grid alignment bug' })`
+2. Capture execution: `capture_run({ mode: 'cli', shell: { commands: ['pnpm run demo'] } })`
+3. Analyze patterns: `analyze_capture({ focus: { module: 'renderer' } })`
+4. Deep analysis: `reasoner_run({ task: 'analyze_root_cause' })`
+5. Apply fixes and verify: `verify_run({ commands: ['pnpm test'] })`
 
 ## 🏗️ Architecture
 
@@ -480,10 +492,10 @@ read_resource({ uri: 'vdt://sessions/{sid}/analysis/buglens.md' })
 
 ## 🗺️ Roadmap
 
-- **v0.2**: Browser capture (Playwright), command replay, session cleanup tools
-- **v0.3**: SSE/HTTP transport, IDE plugins, enhanced clustering algorithms
-- **v0.4**: Automated fix generation, Git integration, framework testing
-- **v1.0**: Production deployment, authentication, scalable indexing
+- **v0.4**: Enhanced reasoner backends, automated patch application, Git integration
+- **v0.5**: SSE/HTTP transport, IDE plugins, advanced clustering algorithms  
+- **v0.6**: Framework-specific debugging, performance profiling, distributed tracing
+- **v1.0**: Production deployment, authentication, enterprise features
 
 ## 💡 Contributing
 

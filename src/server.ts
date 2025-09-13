@@ -11,7 +11,7 @@ import {
   ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 import { VDTTools } from './tools/index.js';
-import { getWriteLogPrompt, getClarifyPrompt, getFixHypothesisPrompt } from './prompts/index.js';
+import { getWriteLogPrompt, getClarifyPrompt, getFixHypothesisPrompt, getOrchestrationPrompt } from './prompts/index.js';
 import { SessionManager } from './utils/session.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -25,7 +25,7 @@ class VDTServer {
     this.server = new Server(
       {
         name: 'vdt-mcp',
-        version: '0.2.0',
+        version: '0.3.0',
       },
       {
         capabilities: {
@@ -49,6 +49,18 @@ class VDTServer {
           {
             name: 'vdt_start_session',
             description: 'Initialize a new VDT debugging session',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                repoRoot: { type: 'string', description: 'Repository root path' },
+                note: { type: 'string', description: 'Session note' },
+                ttlDays: { type: 'number', description: 'Session TTL in days' }
+              }
+            }
+          },
+          {
+            name: 'start_session',
+            description: 'Initialize a new VDT debugging session (alias for vdt_start_session)',
             inputSchema: {
               type: 'object',
               properties: {
@@ -154,7 +166,7 @@ class VDTServer {
               type: 'object',
               properties: {
                 sid: { type: 'string', description: 'Session ID' },
-                task: { type: 'string', enum: ['propose_patch', 'review_patch'], description: 'Reasoning task type' },
+                task: { type: 'string', enum: ['propose_patch', 'analyze_root_cause'], description: 'Reasoning task type' },
                 inputs: {
                   type: 'object',
                   properties: {
@@ -163,21 +175,27 @@ class VDTServer {
                     diff: { type: 'string', description: 'Patch diff vdt:// link' }
                   }
                 },
-                question: { type: 'string', description: 'Optional freeform question' }
+                context: {
+                  type: 'object',
+                  properties: {
+                    selectedIds: { type: 'array', items: { type: 'string' }, description: 'Selected chunk IDs' },
+                    notes: { type: 'string', description: 'Additional context notes' }
+                  }
+                }
               },
               required: ['sid', 'task', 'inputs']
             }
           },
           {
-            name: 'replay_run',
-            description: 'Execute verification commands or replay scripts',
+            name: 'verify_run',
+            description: 'Execute verification commands and capture results for validation',
             inputSchema: {
               type: 'object',
               properties: {
                 sid: { type: 'string', description: 'Session ID' },
                 script: { type: 'string', description: 'Script path (vdt:// link)' },
                 commands: { type: 'array', items: { type: 'string' }, description: 'Commands to execute' },
-                mode: { type: 'string', enum: ['cli', 'web'], description: 'Replay mode' }
+                mode: { type: 'string', enum: ['cli', 'web'], description: 'Verification mode' }
               },
               required: ['sid']
             }
@@ -200,6 +218,14 @@ class VDTServer {
     this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
       return {
         prompts: [
+          {
+            name: 'vdt/spec/orchestration',
+            description: 'Minimal orchestration rules for VDT debugging workflow',
+            arguments: [
+              { name: 'phase', description: 'Current workflow phase', required: false },
+              { name: 'context', description: 'Session context and state', required: false }
+            ]
+          },
           {
             name: 'vdt/debugspec/write-log',
             description: 'Guidance for adding structured logging to code without changing logic',
@@ -237,6 +263,9 @@ class VDTServer {
       const { name, arguments: args } = request.params;
 
       switch (name) {
+        case 'vdt/spec/orchestration':
+          return getOrchestrationPrompt(args as any);
+        
         case 'vdt/debugspec/write-log':
           return getWriteLogPrompt(args as any);
         
@@ -280,6 +309,12 @@ class VDTServer {
                 description: `NDJSON formatted execution logs`,
                 mimeType: 'application/x-ndjson'
               },
+              {
+                uri: `vdt://sessions/${sessionId}/logs/verify.ndjson`,
+                name: `Session ${sessionId} - Verification Logs`,
+                description: `NDJSON formatted verification execution logs`,
+                mimeType: 'application/x-ndjson'
+              },
               // Analysis artifacts
               {
                 uri: `vdt://sessions/${sessionId}/analysis/buglens.md`,
@@ -288,22 +323,28 @@ class VDTServer {
                 mimeType: 'text/markdown'
               },
               {
-                uri: `vdt://sessions/${sessionId}/analysis/buglens-web.md`,
-                name: `Session ${sessionId} - BugLens Web Report`,
-                description: `Web-formatted debugging analysis with HUD integration`,
+                uri: `vdt://sessions/${sessionId}/analysis/clarify.md`,
+                name: `Session ${sessionId} - Clarification Results`,
+                description: `User clarification selections and notes`,
                 mimeType: 'text/markdown'
               },
-              // Web HUD artifacts
               {
-                uri: `vdt://sessions/${sessionId}/logs/devserver.ndjson`,
-                name: `Session ${sessionId} - Dev Server Logs`,
-                description: `Development server output and events`,
-                mimeType: 'application/x-ndjson'
+                uri: `vdt://sessions/${sessionId}/analysis/reasoning.md`,
+                name: `Session ${sessionId} - Reasoning Analysis`,
+                description: `AI reasoner analysis and solution proposals`,
+                mimeType: 'text/markdown'
               },
+              {
+                uri: `vdt://sessions/${sessionId}/analysis/summary.md`,
+                name: `Session ${sessionId} - Session Summary`,
+                description: `Complete session summary with conclusions and next steps`,
+                mimeType: 'text/markdown'
+              },
+              // Web capture artifacts (when available)
               {
                 uri: `vdt://sessions/${sessionId}/logs/actions.ndjson`,
                 name: `Session ${sessionId} - Browser Actions`,
-                description: `Playwright browser action recordings`,
+                description: `Browser action recordings from web capture`,
                 mimeType: 'application/x-ndjson'
               },
               {
@@ -317,26 +358,6 @@ class VDTServer {
                 name: `Session ${sessionId} - Network Activity`,
                 description: `Browser network requests and responses`,
                 mimeType: 'application/x-ndjson'
-              },
-              // Reasoner artifacts
-              {
-                uri: `vdt://sessions/${sessionId}/analysis/reasoner_analyze.json`,
-                name: `Session ${sessionId} - Log Analysis`,
-                description: `AI reasoner analysis of captured logs`,
-                mimeType: 'application/json'
-              },
-              {
-                uri: `vdt://sessions/${sessionId}/analysis/reasoner_patch.json`,
-                name: `Session ${sessionId} - Patch Suggestions`,
-                description: `AI reasoner proposed fixes and patches`,
-                mimeType: 'application/json'
-              },
-              // Legacy patch file (keeping for backward compatibility)
-              {
-                uri: `vdt://sessions/${sessionId}/patches/0001-write-log.diff`,
-                name: `Session ${sessionId} - Legacy Instrumentation Patch`,
-                description: `Legacy single-file instrumentation diff patch`,
-                mimeType: 'text/x-diff'
               }
             );
           } catch {
@@ -401,6 +422,7 @@ class VDTServer {
 
       switch (name) {
         case 'vdt_start_session':
+        case 'start_session':
           return await this.tools.startSession(args as any);
         
         case 'capture_run':
@@ -415,8 +437,8 @@ class VDTServer {
         case 'reasoner_run':
           return await this.tools.reasonerRun(args as any);
         
-        case 'replay_run':
-          return await this.tools.replayRun(args as any);
+        case 'verify_run':
+          return await this.tools.verifyRun(args as any);
         
         case 'end_session':
           return await this.tools.endSession(args as any);
@@ -441,7 +463,7 @@ class VDTServer {
 
   async run() {
     const transport = new StdioServerTransport();
-    console.error('[VDT] Starting VDT MCP Server v0.2.0');
+    console.error('[VDT] Starting VDT MCP Server v0.3.0');
     console.error('[VDT] Web Debug HUD support enabled');
     console.error('[VDT] Initializing reasoner backends...');
     

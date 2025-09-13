@@ -21,8 +21,28 @@ export class AnalysisEngine {
       };
     }
 
-    // Apply focus filters
-    const filteredEvents = this.applyFocus(events, focus);
+    // Check for existing clarify.md to enhance focus
+    let clarifyFocus = focus;
+    try {
+      const clarifyPath = join(sessionDir, 'analysis', 'clarify.md');
+      const clarifyContent = await fs.readFile(clarifyPath, 'utf-8');
+      
+      // Extract selectedIds from clarify.md
+      const selectedIdsMatch = clarifyContent.match(/Selected IDs: (.+)/);
+      if (selectedIdsMatch) {
+        const selectedIds = selectedIdsMatch[1].split(', ').map(id => id.trim());
+        clarifyFocus = {
+          ...focus,
+          selectedIds: [...(focus?.selectedIds || []), ...selectedIds]
+        };
+        console.log('[VDT] Enhanced focus with clarify selections:', selectedIds);
+      }
+    } catch {
+      // No clarify.md exists, continue with original focus
+    }
+
+    // Apply focus filters (now potentially enhanced with clarify data)
+    const filteredEvents = this.applyFocus(events, clarifyFocus);
     
     // Find error-dense windows
     const errorWindows = LogProcessor.findErrorWindows(filteredEvents);

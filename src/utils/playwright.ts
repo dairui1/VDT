@@ -116,9 +116,9 @@ export class PlaywrightManager extends EventEmitter {
     const logsDir = path.join(this.sessionDir, 'logs');
     await fs.mkdir(logsDir, { recursive: true });
 
-    const actionsFile = await fs.open(path.join(logsDir, 'actions.rec.ndjson'), 'w');
-    const consoleFile = await fs.open(path.join(logsDir, 'console.rec.ndjson'), 'w');
-    const networkFile = await fs.open(path.join(logsDir, 'network.rec.ndjson'), 'w');
+    const actionsFile = await fs.open(path.join(logsDir, 'actions.ndjson'), 'w');
+    const consoleFile = await fs.open(path.join(logsDir, 'console.ndjson'), 'w');
+    const networkFile = await fs.open(path.join(logsDir, 'network.ndjson'), 'w');
 
     const recording: RecordingSession = {
       recordId,
@@ -257,7 +257,9 @@ export class PlaywrightManager extends EventEmitter {
 
     // Add log files to links
     links.push(
-      `vdt://sessions/${path.basename(this.sessionDir)}/logs/actions.rec.ndjson`,
+      `vdt://sessions/${path.basename(this.sessionDir)}/logs/actions.ndjson`,
+      `vdt://sessions/${path.basename(this.sessionDir)}/logs/console.ndjson`,
+      `vdt://sessions/${path.basename(this.sessionDir)}/logs/network.ndjson`,
       `vdt://sessions/${path.basename(this.sessionDir)}/snapshots/rec_${recordId}/`
     );
 
@@ -267,7 +269,7 @@ export class PlaywrightManager extends EventEmitter {
 
   private async generatePlaywrightScript(recordId: string): Promise<string> {
     // Read actions from log file
-    const actionsPath = path.join(this.sessionDir, 'logs', 'actions.rec.ndjson');
+    const actionsPath = path.join(this.sessionDir, 'logs', 'actions.ndjson');
     const actionsContent = await fs.readFile(actionsPath, 'utf-8');
     const actions = actionsContent.split('\n').filter(line => line.trim()).map(line => JSON.parse(line) as ActionEvent);
 
@@ -303,7 +305,7 @@ test('recorded session ${recordId}', async ({ page }) => {
   }
 
   private async generateJsonScript(recordId: string): Promise<any> {
-    const actionsPath = path.join(this.sessionDir, 'logs', 'actions.rec.ndjson');
+    const actionsPath = path.join(this.sessionDir, 'logs', 'actions.ndjson');
     const actionsContent = await fs.readFile(actionsPath, 'utf-8');
     const actions = actionsContent.split('\n').filter(line => line.trim()).map(line => JSON.parse(line));
 

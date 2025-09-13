@@ -1,5 +1,131 @@
 import { GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
 
+export function getOrchestrationPrompt(params: {
+  phase?: string;
+  context?: string;
+}): GetPromptResult {
+  const { phase = 'start', context = '' } = params;
+
+  return {
+    description: 'Minimal orchestration rules for VDT debugging workflow',
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text: `# VDT Orchestration Rules (v0.3 KISS)
+
+## Current Phase: ${phase}
+
+## Minimal Debugging Loop
+Follow this exact sequence for optimal debugging results:
+
+### 1. **Initialization**
+- Always start with \`start_session\` to get session ID and resource links
+- Review system_reminder for workflow guidance
+
+### 2. **Capture Phase**  
+- Use \`capture_run\` with appropriate mode:
+  - \`mode: 'cli'\` for command-line applications
+  - \`mode: 'web'\` for browser-based applications
+- Ensure commands are representative of the issue scenario
+- Set reasonable \`timeoutSec\` to avoid partial captures
+
+### 3. **Analysis Phase**
+- **Always** run \`analyze_capture\` immediately after capture
+- Review \`candidateChunks\` and \`needClarify\` flag
+- If \`needClarify: true\`, proceed to clarification step
+
+### 4. **Clarification (Conditional)**
+- Use \`clarify\` tool to focus analysis on relevant log sections
+- Select 2-3 most relevant chunks from candidates
+- Re-run \`analyze_capture\` with focused context
+
+### 5. **Deep Analysis**
+- Use \`reasoner_run\` with task \`'propose_patch'\` or \`'analyze_root_cause'\`
+- Provide BugLens report link as context
+- Review proposed solutions and confidence levels
+
+### 6. **Implementation & Verification**
+- **Main Agent**: Apply code changes based on reasoner insights
+- Use \`verify_run\` to validate fixes with test commands
+- If verification fails, return to step 2 with updated scenario
+
+### 7. **Session Closure**
+- Run \`end_session\` to generate comprehensive summary
+- Review key evidence, conclusions, and next steps
+
+## Critical Rules
+
+### ✅ **Do This**
+- Complete each phase before moving to next
+- Use resource links (\`vdt://sessions/{sid}/...\`) for context
+- Focus analysis using clarify when \`needClarify: true\`
+- Iterate capture→analyze→fix→verify until resolved
+- Always end with session summary
+
+### ❌ **Don't Do This**  
+- Skip analysis after capture
+- Ignore \`needClarify\` flag
+- Apply fixes without reasoner analysis
+- Skip verification of applied fixes
+- Leave sessions open without summary
+
+## Phase-Specific Guidance
+
+${phase === 'capture' ? `
+### Current: Capture Phase
+- Ensure commands reproduce the issue reliably
+- Include error scenarios and edge cases
+- Monitor for timeout and partial capture warnings
+` : ''}
+
+${phase === 'analyze' ? `
+### Current: Analysis Phase
+- Focus on error windows and suspect patterns
+- Pay attention to candidate chunk relevance scores
+- Use clarify if >5 chunks or distributed errors
+` : ''}
+
+${phase === 'fix' ? `
+### Current: Fix Phase
+- Apply reasoner suggestions with defensive coding
+- Maintain code style and existing patterns
+- Add logging if needed for future debugging
+` : ''}
+
+${phase === 'verify' ? `
+### Current: Verification Phase
+- Test both positive and negative scenarios
+- Verify fix doesn't introduce regressions
+- Document verification approach for future reference
+` : ''}
+
+## Context Integration
+${context ? `
+**Session Context**: ${context}
+
+Adjust orchestration based on:
+- Error patterns observed
+- Module complexity
+- Verification requirements
+- Time constraints
+` : ''}
+
+## Success Metrics
+- Issue reproduction captured successfully
+- Root cause identified with high confidence  
+- Fix applied and verified
+- No regression in related functionality
+- Complete documentation in session summary
+
+Remember: **Quality over speed** - thorough analysis prevents multiple debugging cycles.`
+        }
+      }
+    ]
+  };
+}
+
 export function getWriteLogPrompt(params: {
   module: string[];
   anchors?: string[];
