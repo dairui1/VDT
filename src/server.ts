@@ -47,20 +47,8 @@ class VDTServer {
       return {
         tools: [
           {
-            name: 'vdt_start_session',
-            description: 'Initialize a new VDT debugging session',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                repoRoot: { type: 'string', description: 'Repository root path' },
-                note: { type: 'string', description: 'Session note' },
-                ttlDays: { type: 'number', description: 'Session TTL in days' }
-              }
-            }
-          },
-          {
             name: 'start_session',
-            description: 'Initialize a new VDT debugging session (alias for vdt_start_session)',
+            description: 'Initialize a new VDT debugging session',
             inputSchema: {
               type: 'object',
               properties: {
@@ -421,7 +409,6 @@ class VDTServer {
       const { name, arguments: args } = request.params;
 
       switch (name) {
-        case 'vdt_start_session':
         case 'start_session':
           return await this.tools.startSession(args as any);
         

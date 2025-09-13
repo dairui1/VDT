@@ -9,7 +9,7 @@ This version implements the complete v0.3 spec with a minimal, focused debugging
 ## ✨ Key Features
 
 ### 🔧 Tools (7) - Complete v0.3 Set
-- `start_session` / `vdt_start_session` - Initialize debugging session with TTL management
+- `start_session` - Initialize debugging session with TTL management
 - `capture_run` - Unified CLI and Web capture with enhanced error detection  
 - `analyze_capture` - Intelligent log analysis with candidate chunks and clarify integration
 - `clarify` - Interactive focus selection for complex analysis scenarios
