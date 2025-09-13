@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋游戏 - VDT 测试 Demo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>五子棋游戏</h1>
+            <p>VDT 调试工具测试 Demo</p>
+        </header>
+        
+        <div class="game-panel">
+            <div class="game-info">
+                <div class="player-turn">
+                    <span>当前玩家：</span>
+                    <span id="current-player" class="player-black">黑棋</span>
+                </div>
+                <div class="game-status">
+                    <span id="game-status">游戏进行中</span>
+                </div>
+            </div>
+            
+            <div class="game-board">
+                <canvas id="game-canvas" width="600" height="600"></canvas>
+            </div>
+            
+            <div class="game-controls">
+                <button id="btn-restart" class="btn">重新开始</button>
+                <button id="btn-undo" class="btn">悔棋</button>
+                <button id="btn-auto" class="btn">自动对局</button>
+                <button id="btn-pause" class="btn" style="display: none;">暂停</button>
+            </div>
+        </div>
+        
+        <div class="debug-panel">
+            <h3>调试信息</h3>
+            <div id="debug-log" class="debug-log"></div>
+            <button id="btn-clear-log" class="btn btn-small">清空日志</button>
+        </div>
+        
+        <div class="instructions">
+            <h3>游戏说明</h3>
+            <ul>
+                <li>点击棋盘放置棋子</li>
+                <li>连成五子即获胜</li>
+                <li>黑棋先行</li>
+                <li>点击"自动对局"观看 AI 演示</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script type="module" src="main.js"></script>
+</body>
+</html>

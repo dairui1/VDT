@@ -6,7 +6,36 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "demo": "node demo.js"
+    "demo": "node demo.js",
+    "demo:auto": "node demo.js --auto",
+    "demo:edge": "node demo.js --edge-cases", 
+    "demo:perf": "node demo.js --performance",
+    "serve": "npx http-server . -p 8080 -c-1 -o",
+    "dev": "npx http-server . -p 8080 -c-1 -o index.html",
+    "test": "node demo.js && echo 'Console tests completed. Run npm run serve to test web version.'",
+    "clean": "echo 'Cleaning up temporary files...' && rm -rf node_modules/.cache"
   },
-  "dependencies": {}
+  "dependencies": {
+    "http-server": "^14.1.1"
+  },
+  "devDependencies": {},
+  "keywords": [
+    "gobang",
+    "five-in-a-row",
+    "game",
+    "debugging",
+    "vdt",
+    "canvas",
+    "javascript"
+  ],
+  "author": "VDT Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-repo/vdt"
+  },
+  "bugs": {
+    "url": "https://github.com/your-repo/vdt/issues"
+  },
+  "homepage": "https://github.com/your-repo/vdt#readme"
 }
