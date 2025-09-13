@@ -37,10 +37,13 @@ export class CaptureRunTool extends BaseTool {
       
       if (shouldOpenHud) {
         try {
+          // Extract initial command from shell commands if available
+          const initialCmd = params.shell?.commands?.[0] || '';
+          
           hudResult = await this.hudManager.startHud({
             sid: params.sid,
             dev: { 
-              cmd: '', 
+              cmd: initialCmd, 
               cwd: params.shell?.cwd || process.cwd() 
             },
             browse: { 

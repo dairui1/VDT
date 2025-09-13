@@ -30,6 +30,7 @@ export class HudManager {
   async startHud(params: HudStartIn, sessionDir: string): Promise<HudStartOut> {
     const { sid } = params;
     const entryUrl = params.browse.entryUrl;
+    const startCmd = params.dev.cmd;
     
     // Store session info for tracking
     const session: HudSession = {
@@ -39,7 +40,13 @@ export class HudManager {
     };
     this.sessions.set(sid, session);
 
-    const hudUrl = `http://localhost:${this.hudPort}?starthtml=${encodeURIComponent(entryUrl)}`;
+    // Build URL with both starthtml and startcmd parameters
+    const urlParams = new URLSearchParams();
+    urlParams.set('starthtml', entryUrl);
+    if (startCmd && startCmd.trim()) {
+      urlParams.set('startcmd', startCmd);
+    }
+    const hudUrl = `http://localhost:${this.hudPort}?${urlParams.toString()}`;
 
     // Auto-open browser if specified
     if (params.browse.autoOpen !== false) {
