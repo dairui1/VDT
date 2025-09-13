@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>黄金矿工 - Gold Miner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="game-container">
+        <div class="game-header">
+            <div class="game-info">
+                <div class="info-item">
+                    <span class="label">关卡:</span>
+                    <span id="level">1</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">分数:</span>
+                    <span id="score">0</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">目标:</span>
+                    <span id="target">500</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">时间:</span>
+                    <span id="timer">60</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">最高分:</span>
+                    <span id="highScore">0</span>
+                </div>
+            </div>
+        </div>
+        
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        
+        <div class="game-controls">
+            <button id="startBtn" class="btn btn-primary">开始游戏</button>
+            <button id="pauseBtn" class="btn btn-secondary" disabled>暂停</button>
+            <button id="resetBtn" class="btn btn-danger">重置</button>
+        </div>
+        
+        <div id="gameOverModal" class="modal">
+            <div class="modal-content">
+                <h2 id="gameOverTitle">游戏结束</h2>
+                <p id="gameOverMessage"></p>
+                <div class="modal-buttons">
+                    <button id="nextLevelBtn" class="btn btn-success">下一关</button>
+                    <button id="retryBtn" class="btn btn-primary">重试</button>
+                    <button id="menuBtn" class="btn btn-secondary">主菜单</button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3>游戏说明</h3>
+            <ul>
+                <li>点击鼠标或按空格键发射钩爪</li>
+                <li>钩爪会自动左右摆动</li>
+                <li>抓取金块和钻石获得分数</li>
+                <li>石头分值低且很重</li>
+                <li>神秘袋子包含随机奖励</li>
+                <li>避开TNT炸弹</li>
+                <li>在时间内达到目标分数即可过关</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/game.js') }}"></script>
+</body>
+</html>
