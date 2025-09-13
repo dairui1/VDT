@@ -617,7 +617,7 @@ export class VDTTools {
         question: params.question,
         constraints: params.constraints,
         model_prefs: {
-          effort: params.args?.effort || 'medium',
+          effort: (params.args?.effort as 'low' | 'medium' | 'high') || 'medium',
           max_tokens: 4000,
           temperature: 0.2,
         },

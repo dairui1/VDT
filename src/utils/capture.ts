@@ -11,7 +11,7 @@ export class CaptureManager {
     sessionDir: string,
     config: CaptureConfig,
     redactConfig: RedactConfig = {}
-  ): Promise<{ chunks: string[], summary: { lines: number, errors: number } }> {
+  ): Promise<{ chunks: string[], summary: { lines: number, errors: number, timeout?: boolean, timeoutSec?: number } }> {
     
     const logFile = join(sessionDir, 'logs', 'capture.ndjson');
     await FileManager.ensureDir(join(sessionDir, 'logs'));
