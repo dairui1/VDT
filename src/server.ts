@@ -60,30 +60,20 @@ class VDTServer {
           },
           {
             name: 'capture_run',
-            description: 'Unified capture entry point supporting CLI and Web modes',
+            description: 'Capture content from specified file and store in session logs',
             inputSchema: {
               type: 'object',
               properties: {
                 sid: { type: 'string', description: 'Session ID' },
-                mode: { type: 'string', enum: ['cli', 'web'], description: 'Capture mode' },
-                shell: {
+                file: {
                   type: 'object',
                   properties: {
-                    cwd: { type: 'string', description: 'Working directory' },
-                    commands: { type: 'array', items: { type: 'string' }, description: 'Commands to execute' },
-                    env: { type: 'object', description: 'Environment variables' },
-                    timeoutSec: { type: 'number', description: 'Timeout in seconds' }
+                    path: { type: 'string', description: 'File path to capture' },
+                    encoding: { type: 'string', description: 'File encoding (default: utf-8)' },
+                    format: { type: 'string', enum: ['auto', 'json', 'ndjson', 'text'], description: 'File format' },
+                    lineRange: { type: 'array', items: { type: 'number' }, description: 'Line range [start, end]' }
                   },
-                  required: ['cwd']
-                },
-                web: {
-                  type: 'object',
-                  properties: {
-                    entryUrl: { type: 'string', description: 'Entry URL' },
-                    actions: { type: 'boolean', description: 'Capture actions' },
-                    console: { type: 'boolean', description: 'Capture console logs' },
-                    network: { type: 'boolean', description: 'Capture network requests' }
-                  }
+                  required: ['path']
                 },
                 redact: {
                   type: 'object',
@@ -92,7 +82,7 @@ class VDTServer {
                   }
                 }
               },
-              required: ['sid', 'mode']
+              required: ['sid', 'file']
             }
           },
           {

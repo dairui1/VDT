@@ -52,18 +52,11 @@ export class VDTTools {
   // Core tool: capture_run
   async captureRun(params: {
     sid: string;
-    mode: 'cli' | 'web';
-    shell?: {
-      cwd: string;
-      commands?: string[];
-      env?: Record<string, string>;
-      timeoutSec?: number;
-    };
-    web?: {
-      entryUrl: string;
-      actions?: boolean;
-      console?: boolean;
-      network?: boolean;
+    file: {
+      path: string;
+      encoding?: string;
+      format?: 'auto' | 'json' | 'ndjson' | 'text';
+      lineRange?: [number, number];
     };
     redact?: {
       patterns?: string[];

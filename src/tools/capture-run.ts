@@ -4,22 +4,19 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export class CaptureRunTool extends BaseTool {
+  private async logDebugInfo(message: string, data?: any): Promise<void> {
+    try {
+      const timestamp = new Date().toISOString();
+      const logEntry = `[${timestamp}] ${message}${data ? '\n' + JSON.stringify(data, null, 2) : ''}\n\n`;
+      await fs.appendFile('/Users/zhangyu.95/hackson/VDT/tmp.txt', logEntry, 'utf-8');
+    } catch (error) {
+      console.warn('[VDT] Failed to write debug log:', error);
+    }
+  }
+
   async execute(params: {
     sid: string;
-    mode: 'cli' | 'web' | 'file';
-    shell?: {
-      cwd: string;
-      commands?: string[];
-      env?: Record<string, string>;
-      timeoutSec?: number;
-    };
-    web?: {
-      entryUrl: string;
-      actions?: boolean;
-      console?: boolean;
-      network?: boolean;
-    };
-    file?: {
+    file: {
       path: string;
       encoding?: string;
       format?: 'auto' | 'json' | 'ndjson' | 'text';
@@ -29,14 +26,12 @@ export class CaptureRunTool extends BaseTool {
       patterns?: string[];
     };
   }): Promise<CallToolResult> {
+    // Log input parameters for debugging
+    await this.logDebugInfo('CaptureRunTool.execute() called with parameters:', params);
+    
     try {
       // First try to find the session without repoRoot to see if it exists
       let session = await this.sessionManager.getSession(params.sid);
-      
-      // If not found and we have shell config with cwd, try using that as repoRoot
-      if (!session && params.shell?.cwd) {
-        session = await this.sessionManager.getSession(params.sid, params.shell.cwd);
-      }
       
       if (!session) {
         return this.createErrorResponse(
@@ -48,74 +43,37 @@ export class CaptureRunTool extends BaseTool {
         );
       }
 
-      let result;
+      // Log file mode processing
+      await this.logDebugInfo('Processing file mode with file parameter:', params.file);
       
-      if (params.mode === 'cli' && params.shell) {
-        // CLI capture using existing captureShell logic
-        result = await this.captureManager.captureShell(
-          this.sessionManager.getSessionDir(params.sid, session.repoRoot),
-          params.shell,
-          params.redact
-        );
-      } else if (params.mode === 'web' && params.web) {
-        // Web capture using Playwright
-        const { PlaywrightManager } = await import('../utils/playwright.js');
-        const playwright = new PlaywrightManager();
-        
-        try {
-          await playwright.initialize();
-          await playwright.startBrowser(params.web.entryUrl, this.sessionManager.getSessionDir(params.sid, session.repoRoot));
-          
-          // Start recording if capture options are enabled
-          if (params.web.actions || params.web.console || params.web.network) {
-            await playwright.startRecording(
-              `capture_${Date.now()}`,
-              params.web.entryUrl
-            );
-            
-            // Let it run for a reasonable time for web capture
-            await new Promise(resolve => setTimeout(resolve, 10000));
-            
-            const recordingResult = await playwright.stopRecording(
-              `capture_${Date.now()}`,
-              ['json']
-            );
-            
-            result = {
-              chunks: ['logs/actions.ndjson', 'logs/console.ndjson', 'logs/network.ndjson'],
-              summary: { 
-                lines: 0, 
-                errors: 0,
-                webCapture: true,
-                links: recordingResult.links
-              }
-            };
-          } else {
-            result = {
-              chunks: ['logs/capture.ndjson'],
-              summary: { lines: 0, errors: 0, webCapture: true }
-            };
-          }
-        } finally {
-          await playwright.dispose();
-        }
-      } else if (params.mode === 'file' && params.file) {
-        // File capture - read specified file and save to session logs
-        result = await this.captureFile(
-          this.sessionManager.getSessionDir(params.sid, session.repoRoot),
-          params.file,
-          params.redact
-        );
-      } else {
-        throw new Error(`Invalid capture mode or missing parameters for mode: ${params.mode}`);
-      }
+      // File capture - read specified file and save to session logs
+      const result = await this.captureFile(
+        this.sessionManager.getSessionDir(params.sid, session.repoRoot),
+        params.file,
+        params.redact
+      );
+      
+      // Log the result of captureFile
+      await this.logDebugInfo('captureFile method completed with result:', result);
 
-      return this.createSuccessResponse({
+      const finalResponse = this.createSuccessResponse({
         ...result,
         outputLog: this.sessionManager.getResourceLink(params.sid, 'logs/capture.ndjson')
       });
+      
+      // Log the final response from capture_run tool
+      await this.logDebugInfo('capture_run tool final response:', finalResponse);
+      
+      return finalResponse;
 
     } catch (error) {
+      // Log error details
+      await this.logDebugInfo('capture_run tool error occurred:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        params: params
+      });
+      
       return this.createErrorResponse(
         params.sid,
         'capture_run',
@@ -131,29 +89,46 @@ export class CaptureRunTool extends BaseTool {
     fileConfig: { path: string; encoding?: string; format?: 'auto' | 'json' | 'ndjson' | 'text'; lineRange?: [number, number] },
     redactConfig?: { patterns?: string[] }
   ): Promise<{ chunks: string[]; summary: { lines: number; errors: number; fileCapture: boolean; filePath: string } }> {
+    // Log captureFile method entry
+    await this.logDebugInfo('captureFile method called with:', { 
+      sessionDir, 
+      fileConfig, 
+      redactConfig 
+    });
+    
     try {
       // Read the specified file
       const encoding = fileConfig.encoding || 'utf-8';
+      await this.logDebugInfo(`Reading file: ${fileConfig.path} with encoding: ${encoding}`);
+      
       let content = await fs.readFile(fileConfig.path, encoding as BufferEncoding);
+      await this.logDebugInfo(`File read successfully, content length: ${content.length} characters`);
       
       // Apply line range if specified
       if (fileConfig.lineRange) {
         const lines = content.split('\n');
         const [start, end] = fileConfig.lineRange;
+        await this.logDebugInfo(`Applying line range [${start}, ${end}] to ${lines.length} total lines`);
         content = lines.slice(start - 1, end).join('\n');
+        await this.logDebugInfo(`After line range filtering, content length: ${content.length} characters`);
       }
       
       // Apply redaction if specified
       if (redactConfig?.patterns) {
+        await this.logDebugInfo('Applying redaction with patterns:', redactConfig.patterns);
         content = this.applyRedaction(content, redactConfig.patterns);
+        await this.logDebugInfo(`After redaction, content length: ${content.length} characters`);
       }
       
       // Ensure logs directory exists
       const logsDir = path.join(sessionDir, 'logs');
+      await this.logDebugInfo(`Creating logs directory: ${logsDir}`);
       await fs.mkdir(logsDir, { recursive: true });
       
       // Determine output format and save to capture.ndjson
       const captureLogPath = path.join(logsDir, 'capture.ndjson');
+      await this.logDebugInfo(`Writing capture log to: ${captureLogPath}`);
+      
       const lines = content.split('\n');
       const timestamp = Date.now();
       
@@ -177,8 +152,9 @@ export class CaptureRunTool extends BaseTool {
       }).filter(Boolean).join('\n');
       
       await fs.writeFile(captureLogPath, ndjsonContent, 'utf-8');
+      await this.logDebugInfo(`Successfully wrote ${lines.filter(line => line.trim()).length} lines to capture log`);
       
-      return {
+      const result = {
         chunks: ['logs/capture.ndjson'],
         summary: {
           lines: lines.filter(line => line.trim()).length,
@@ -187,7 +163,14 @@ export class CaptureRunTool extends BaseTool {
           filePath: fileConfig.path
         }
       };
+      
+      await this.logDebugInfo('captureFile method returning result:', result);
+      return result;
     } catch (error) {
+      await this.logDebugInfo('captureFile method error:', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined 
+      });
       throw new Error(`Failed to capture file ${fileConfig.path}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
