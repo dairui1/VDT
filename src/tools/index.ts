@@ -7,9 +7,6 @@ import { AnalysisEngine } from '../utils/analysis.js';
 import { StartSessionTool } from './start-session.js';
 import { CaptureRunTool } from './capture-run.js';
 import { AnalyzeCaptureTool } from './analyze-capture.js';
-import { ClarifyTool } from './clarify.js';
-import { ReasonerRunTool } from './reasoner-run.js';
-import { VerifyRunTool } from './verify-run.js';
 import { EndSessionTool } from './end-session.js';
 
 export class VDTTools {
@@ -21,9 +18,6 @@ export class VDTTools {
   private startSessionTool: StartSessionTool;
   private captureRunTool: CaptureRunTool;
   private analyzeCaptureTool: AnalyzeCaptureTool;
-  private clarifyTool: ClarifyTool;
-  private reasonerRunTool: ReasonerRunTool;
-  private verifyRunTool: VerifyRunTool;
   private endSessionTool: EndSessionTool;
 
   constructor() {
@@ -35,9 +29,6 @@ export class VDTTools {
     this.startSessionTool = new StartSessionTool(this.sessionManager, this.captureManager, this.analysisEngine);
     this.captureRunTool = new CaptureRunTool(this.sessionManager, this.captureManager, this.analysisEngine);
     this.analyzeCaptureTool = new AnalyzeCaptureTool(this.sessionManager, this.captureManager, this.analysisEngine);
-    this.clarifyTool = new ClarifyTool(this.sessionManager, this.captureManager, this.analysisEngine);
-    this.reasonerRunTool = new ReasonerRunTool(this.sessionManager, this.captureManager, this.analysisEngine);
-    this.verifyRunTool = new VerifyRunTool(this.sessionManager, this.captureManager, this.analysisEngine);
     this.endSessionTool = new EndSessionTool(this.sessionManager, this.captureManager, this.analysisEngine);
   }
 
@@ -90,32 +81,8 @@ export class VDTTools {
       timeRange?: [number, number];
       selectedIds?: string[];
     };
-  }): Promise<CallToolResult> {
-    return this.analyzeCaptureTool.execute(params);
-  }
-
-  // Core tool: clarify
-  async clarify(params: {
-    sid: string;
-    chunks: Array<{
-      id: string;
-      title: string;
-      excerpt: string;
-    }>;
-    answer: {
-      selectedIds: string[];
-      notes?: string;
-    };
-  }): Promise<CallToolResult> {
-    return this.clarifyTool.execute(params);
-  }
-
-  // Core tool: reasoner_run (aligned with spec)
-  async reasonerRun(params: {
-    sid: string;
-    task: 'propose_patch' | 'analyze_root_cause';
-    inputs: {
-      buglens?: string;
+    task?: 'propose_patch' | 'analyze_root_cause';
+    inputs?: {
       code?: string[];
       diff?: string;
     };
@@ -129,17 +96,7 @@ export class VDTTools {
     constraints?: string[];
     redact?: boolean;
   }): Promise<CallToolResult> {
-    return this.reasonerRunTool.execute(params);
-  }
-
-  // Core tool: verify_run (aligned with spec)
-  async verifyRun(params: {
-    sid: string;
-    script?: string;
-    commands?: string[];
-    mode?: 'cli' | 'web';
-  }): Promise<CallToolResult> {
-    return this.verifyRunTool.execute(params);
+    return this.analyzeCaptureTool.execute(params);
   }
 
   // Core tool: end_session
