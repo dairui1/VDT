@@ -30,30 +30,30 @@
             </div>
 
             <div class="game-canvas-container">
-                <canvas id="gameCanvas" width="400" height="400"></canvas>
+                <canvas id="gameCanvas" data-testid="game-canvas" width="400" height="400"></canvas>
             </div>
 
             <div class="game-controls">
-                <button id="startBtn" class="btn btn-primary">Start Game</button>
-                <button id="pauseBtn" class="btn btn-secondary">Pause</button>
-                <button id="restartBtn" class="btn btn-secondary">Restart</button>
+                <button id="startBtn" data-testid="start-button" class="btn btn-primary">Start Game</button>
+                <button id="pauseBtn" data-testid="pause-button" class="btn btn-secondary">Pause</button>
+                <button id="restartBtn" data-testid="restart-button" class="btn btn-secondary">Restart</button>
             </div>
 
             <div class="speed-control">
                 <label for="speedRange">Speed:</label>
-                <input type="range" id="speedRange" min="50" max="300" value="150" step="25">
+                <input type="range" id="speedRange" data-testid="speed-slider" min="50" max="300" value="150" step="25">
                 <span id="speedValue">150ms</span>
             </div>
         </div>
 
         <div class="mobile-controls">
             <div class="dpad">
-                <button class="dpad-btn dpad-up" data-direction="up">↑</button>
+                <button class="dpad-btn dpad-up" data-testid="up-button" data-direction="up">↑</button>
                 <div class="dpad-middle">
-                    <button class="dpad-btn dpad-left" data-direction="left">←</button>
-                    <button class="dpad-btn dpad-right" data-direction="right">→</button>
+                    <button class="dpad-btn dpad-left" data-testid="left-button" data-direction="left">←</button>
+                    <button class="dpad-btn dpad-right" data-testid="right-button" data-direction="right">→</button>
                 </div>
-                <button class="dpad-btn dpad-down" data-direction="down">↓</button>
+                <button class="dpad-btn dpad-down" data-testid="down-button" data-direction="down">↓</button>
             </div>
         </div>
 

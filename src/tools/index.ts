@@ -3,19 +3,25 @@ import { SessionManager } from '../utils/session.js';
 import { ASTInstrumenter } from '../utils/ast.js';
 import { CaptureManager } from '../utils/capture.js';
 import { AnalysisEngine } from '../utils/analysis.js';
-import { ToolResponse } from '../types/index.js';
+import { HudManager } from '../utils/hud.js';
+import { WebCaptureAnalyzer } from '../utils/web-analyzer.js';
+import { ToolResponse, HudStartIn, RecordStartIn, RecordStopIn, ReplayRunIn, AnalyzeWebCaptureIn } from '../types/index.js';
 
 export class VDTTools {
   private sessionManager: SessionManager;
   private instrumenter: ASTInstrumenter;
   private captureManager: CaptureManager;
   private analysisEngine: AnalysisEngine;
+  private hudManager: HudManager;
+  private webAnalyzer: WebCaptureAnalyzer;
 
   constructor() {
     this.sessionManager = new SessionManager();
     this.instrumenter = new ASTInstrumenter();
     this.captureManager = new CaptureManager();
     this.analysisEngine = new AnalysisEngine();
+    this.hudManager = new HudManager();
+    this.webAnalyzer = new WebCaptureAnalyzer();
   }
 
   async startSession(params: {
@@ -327,5 +333,258 @@ export class VDTTools {
         }]
       };
     }
+  }
+
+  // v0.2 HUD Tools
+  async hudStart(params: HudStartIn): Promise<CallToolResult> {
+    try {
+      const session = await this.sessionManager.getSession(params.sid);
+      if (!session) {
+        throw new Error(`Session ${params.sid} not found`);
+      }
+
+      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+      const result = await this.hudManager.startHud(params, sessionDir);
+
+      const response: ToolResponse = {
+        data: result
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'hud_start', 'HUD_START_ERROR',
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check development server configuration and port availability'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async hudStatus(params: { sid: string }): Promise<CallToolResult> {
+    try {
+      const result = await this.hudManager.getHudStatus(params.sid);
+
+      const response: ToolResponse = {
+        data: result
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check if HUD session exists and is running'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async hudStop(params: { sid: string; saveTrace?: boolean }): Promise<CallToolResult> {
+    try {
+      const result = await this.hudManager.stopHud(params.sid, params.saveTrace);
+
+      const response: ToolResponse = {
+        data: result
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check if HUD session exists'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async recordStart(params: RecordStartIn): Promise<CallToolResult> {
+    try {
+      const recordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      await this.hudManager.startRecording(params.sid, recordId, params.entryUrl, params.selectors);
+
+      const response: ToolResponse = {
+        data: {
+          recordId,
+          links: [`vdt://sessions/${params.sid}/logs/actions.rec.ndjson`]
+        }
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'record_start', 'RECORD_START_ERROR',
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Ensure HUD session is running and browser is ready'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async recordStop(params: RecordStopIn): Promise<CallToolResult> {
+    try {
+      const result = await this.hudManager.stopRecording(params.sid, params.recordId, params.export);
+
+      const response: ToolResponse = {
+        data: result
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'record_stop', 'RECORD_STOP_ERROR',
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check if recording session exists and is active'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async replayRun(params: ReplayRunIn): Promise<CallToolResult> {
+    try {
+      const result = await this.hudManager.replayScript(params.sid, params.script, params.mode);
+
+      const response: ToolResponse = {
+        data: result
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'replay_run', 'REPLAY_ERROR',
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check script path and browser availability'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async analyzeWebCapture(params: AnalyzeWebCaptureIn): Promise<CallToolResult> {
+    try {
+      const session = await this.sessionManager.getSession(params.sid);
+      if (!session) {
+        throw new Error(`Session ${params.sid} not found`);
+      }
+
+      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+      const result = await this.webAnalyzer.analyzeWebCapture(sessionDir, params);
+
+      const response: ToolResponse = {
+        data: result
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'analyze_web_capture', 'WEB_ANALYSIS_ERROR',
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Ensure web capture data exists in session logs'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async dispose(): Promise<void> {
+    await this.hudManager.dispose();
   }
 }

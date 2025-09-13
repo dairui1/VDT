@@ -25,7 +25,7 @@ class VDTServer {
     this.server = new Server(
       {
         name: 'vdt-mcp',
-        version: '0.1.0',
+        version: '0.2.0',
       },
       {
         capabilities: {
@@ -131,6 +131,167 @@ class VDTServer {
                   }
                 },
                 ruleset: { type: 'string', description: 'Analysis ruleset' }
+              },
+              required: ['sid']
+            }
+          },
+          // v0.2 HUD Tools
+          {
+            name: 'hud_start',
+            description: 'Start HUD with dev server and browser session',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                dev: {
+                  type: 'object',
+                  properties: {
+                    cmd: { type: 'string', description: 'Development server command' },
+                    cwd: { type: 'string', description: 'Working directory' },
+                    env: { type: 'object', description: 'Environment variables' }
+                  },
+                  required: ['cmd', 'cwd']
+                },
+                browse: {
+                  type: 'object',
+                  properties: {
+                    entryUrl: { type: 'string', description: 'Entry URL to open' },
+                    autoOpen: { type: 'boolean', description: 'Auto-open browser' }
+                  },
+                  required: ['entryUrl']
+                },
+                capture: {
+                  type: 'object',
+                  properties: {
+                    screenshot: {
+                      type: 'object',
+                      properties: {
+                        mode: { type: 'string', enum: ['none', 'onAction', 'interval'], description: 'Screenshot mode' },
+                        ms: { type: 'number', description: 'Interval in milliseconds' }
+                      }
+                    },
+                    network: { type: 'string', enum: ['off', 'summary'], description: 'Network capture mode' },
+                    redact: {
+                      type: 'object',
+                      properties: {
+                        patterns: { type: 'array', items: { type: 'string' }, description: 'Redaction patterns' }
+                      }
+                    }
+                  }
+                }
+              },
+              required: ['sid', 'dev', 'browse']
+            }
+          },
+          {
+            name: 'hud_status',
+            description: 'Get HUD session status',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' }
+              },
+              required: ['sid']
+            }
+          },
+          {
+            name: 'hud_stop',
+            description: 'Stop HUD session',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                saveTrace: { type: 'boolean', description: 'Save trace data' }
+              },
+              required: ['sid']
+            }
+          },
+          {
+            name: 'record_start',
+            description: 'Start recording browser interactions',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                entryUrl: { type: 'string', description: 'Entry URL for recording' },
+                selectors: {
+                  type: 'object',
+                  properties: {
+                    prefer: { type: 'array', items: { type: 'string' }, description: 'Preferred selector strategies' }
+                  }
+                },
+                screenshot: {
+                  type: 'object',
+                  properties: {
+                    mode: { type: 'string', enum: ['none', 'onAction', 'interval'], description: 'Screenshot mode' },
+                    ms: { type: 'number', description: 'Interval in milliseconds' }
+                  }
+                }
+              },
+              required: ['sid', 'entryUrl']
+            }
+          },
+          {
+            name: 'record_stop',
+            description: 'Stop recording and export scripts',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                recordId: { type: 'string', description: 'Recording ID' },
+                export: { type: 'array', items: { type: 'string', enum: ['playwright', 'json'] }, description: 'Export formats' }
+              },
+              required: ['sid', 'recordId', 'export']
+            }
+          },
+          {
+            name: 'replay_run',
+            description: 'Run recorded script with auto-capture',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                script: { type: 'string', description: 'Script path (vdt:// link)' },
+                mode: { type: 'string', enum: ['headless', 'headed'], description: 'Browser mode' },
+                stability: {
+                  type: 'object',
+                  properties: {
+                    networkIdleMs: { type: 'number', description: 'Network idle timeout' },
+                    uiIdleMs: { type: 'number', description: 'UI idle timeout' },
+                    seed: { type: 'number', description: 'Random seed' },
+                    freezeTime: { type: 'boolean', description: 'Freeze time' }
+                  }
+                },
+                mocks: {
+                  type: 'object',
+                  properties: {
+                    enable: { type: 'boolean', description: 'Enable mocking' },
+                    rules: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          url: { type: 'string', description: 'URL pattern' },
+                          method: { type: 'string', description: 'HTTP method' },
+                          respond: { type: 'object', description: 'Mock response' }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              required: ['sid', 'script']
+            }
+          },
+          {
+            name: 'analyze_web_capture',
+            description: 'Generate BugLens-Web analysis from web capture data',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                focus: { type: 'string', description: 'Analysis focus' },
+                topk: { type: 'number', description: 'Top K results' }
               },
               required: ['sid']
             }
@@ -312,6 +473,28 @@ class VDTServer {
         case 'analyze_debug_log':
           return await this.tools.analyzeDebugLog(args as any);
         
+        // v0.2 HUD Tools
+        case 'hud_start':
+          return await this.tools.hudStart(args as any);
+        
+        case 'hud_status':
+          return await this.tools.hudStatus(args as any);
+        
+        case 'hud_stop':
+          return await this.tools.hudStop(args as any);
+        
+        case 'record_start':
+          return await this.tools.recordStart(args as any);
+        
+        case 'record_stop':
+          return await this.tools.recordStop(args as any);
+        
+        case 'replay_run':
+          return await this.tools.replayRun(args as any);
+        
+        case 'analyze_web_capture':
+          return await this.tools.analyzeWebCapture(args as any);
+        
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -324,6 +507,7 @@ class VDTServer {
 
     process.on('SIGINT', async () => {
       console.error('[VDT] Shutting down server...');
+      await this.tools.dispose();
       await this.server.close();
       process.exit(0);
     });
@@ -331,7 +515,8 @@ class VDTServer {
 
   async run() {
     const transport = new StdioServerTransport();
-    console.error('[VDT] Starting VDT MCP Server v0.1.0');
+    console.error('[VDT] Starting VDT MCP Server v0.2.0');
+    console.error('[VDT] Web Debug HUD support enabled');
     console.error('[VDT] Listening on stdio...');
     
     await this.server.connect(transport);

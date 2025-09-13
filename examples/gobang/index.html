@@ -25,21 +25,21 @@
             </div>
             
             <div class="game-board">
-                <canvas id="game-canvas" width="600" height="600"></canvas>
+                <canvas id="game-canvas" data-testid="game-board" width="600" height="600"></canvas>
             </div>
             
             <div class="game-controls">
-                <button id="btn-restart" class="btn">重新开始</button>
-                <button id="btn-undo" class="btn">悔棋</button>
-                <button id="btn-auto" class="btn">自动对局</button>
-                <button id="btn-pause" class="btn" style="display: none;">暂停</button>
+                <button id="btn-restart" data-testid="restart-button" class="btn">重新开始</button>
+                <button id="btn-undo" data-testid="undo-button" class="btn">悔棋</button>
+                <button id="btn-auto" data-testid="auto-button" class="btn">自动对局</button>
+                <button id="btn-pause" data-testid="pause-button" class="btn" style="display: none;">暂停</button>
             </div>
         </div>
         
         <div class="debug-panel">
             <h3>调试信息</h3>
-            <div id="debug-log" class="debug-log"></div>
-            <button id="btn-clear-log" class="btn btn-small">清空日志</button>
+            <div id="debug-log" data-testid="debug-log" class="debug-log"></div>
+            <button id="btn-clear-log" data-testid="clear-log-button" class="btn btn-small">清空日志</button>
         </div>
         
         <div class="instructions">

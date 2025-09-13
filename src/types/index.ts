@@ -75,3 +75,122 @@ export interface ToolResponse<T = any> {
   hint?: string;
   data?: T;
 }
+
+// v0.2 HUD Types
+export interface HudStartIn {
+  sid: string;
+  dev: { cmd: string; cwd: string; env?: Record<string, string> };
+  browse: { entryUrl: string; autoOpen?: boolean };
+  capture?: {
+    screenshot?: { mode: 'none' | 'onAction' | 'interval'; ms?: number };
+    network?: 'off' | 'summary';
+    redact?: { patterns?: string[] };
+  };
+}
+
+export interface HudStartOut {
+  sid: string;
+  hudUrl: string;
+  links: string[]; // ResourceLinks to ndjson files
+}
+
+export interface HudStatusOut {
+  dev: { status: 'running' | 'exited'; pid?: number };
+  browser: { status: 'ready' | 'closed'; pages: number };
+  recent: { actions: number; errors: number; consoleErrors: number };
+  links: string[];
+}
+
+export interface RecordStartIn {
+  sid: string;
+  entryUrl: string;
+  selectors?: { prefer: string[] };
+  screenshot?: { mode: 'none' | 'onAction' | 'interval'; ms?: number };
+}
+
+export interface RecordStartOut {
+  recordId: string;
+  links: string[];
+}
+
+export interface RecordStopIn {
+  sid: string;
+  recordId: string;
+  export: Array<'playwright' | 'json'>;
+}
+
+export interface RecordStopOut {
+  script: {
+    playwright?: string;
+    json?: string;
+  };
+  links: string[];
+}
+
+export interface ReplayRunIn {
+  sid: string;
+  script: string; // vdt:// link
+  mode?: 'headless' | 'headed';
+  stability?: { networkIdleMs?: number; uiIdleMs?: number; seed?: number; freezeTime?: boolean };
+  mocks?: { enable?: boolean; rules?: Array<{ url: string; method?: string; respond: any }> };
+}
+
+export interface ReplayRunOut {
+  passed: boolean;
+  summary: { steps: number; failStep?: string };
+  links: string[];
+}
+
+export interface AnalyzeWebCaptureIn {
+  sid: string;
+  focus?: string;
+  topk?: number;
+}
+
+export interface AnalyzeWebCaptureOut {
+  links: string[];
+  findings: any;
+}
+
+// Event Types for ndjson
+export interface DevServerEvent {
+  ts: number;
+  stream: 'stdout' | 'stderr';
+  level: 'info' | 'warn' | 'error';
+  msg: string;
+}
+
+export interface ActionEvent {
+  ts: number;
+  type: 'click' | 'input' | 'navigate' | 'keydown' | 'drag';
+  url: string;
+  selector?: string;
+  selectorMeta?: {
+    strategy: string;
+    fallbacks?: string[];
+  };
+  value?: string;
+  coords?: { x: number; y: number };
+  screenshot?: string;
+  stepId: string;
+}
+
+export interface ConsoleEvent {
+  ts: number;
+  type: 'error' | 'warn' | 'log';
+  args: any[];
+  stack?: string;
+  stepIdHint?: string;
+}
+
+export interface NetworkEvent {
+  ts: number;
+  phase: 'request' | 'response' | 'failed';
+  method: string;
+  url: string;
+  status?: number;
+  timing?: { ttfb?: number };
+  bytes?: number;
+  reqId: string;
+  stepIdHint?: string;
+}

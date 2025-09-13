@@ -1,2 +1,6 @@
+packages:
+  - "."
+  - "hud-ui"
+
 ignoredBuiltDependencies:
   - node-pty
