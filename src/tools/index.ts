@@ -49,7 +49,7 @@ export class VDTTools {
     // Cleanup resources
   }
 
-  // Core tool: vdt_start_session
+  // Core tool: start_session
   async startSession(params: {
     repoRoot?: string;
     note?: string;

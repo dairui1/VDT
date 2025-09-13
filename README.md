@@ -117,7 +117,7 @@ echo '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}' | node dist/server.js
 在 AI 助手中使用以下命令验证 VDT 功能：
 
 1. **列出可用工具**：查看是否显示 5 个 VDT 工具
-2. **开始会话**：`vdt_start_session({ repoRoot: ".", note: "test" })`
+2. **开始会话**：`start_session({ repoRoot: ".", note: "test" })`
 3. **列出资源**：检查会话资源是否可访问
 
 ## 🛠️ 本地开发与调试
@@ -237,7 +237,7 @@ echo '{"jsonrpc":"2.0","method":"tools/list","id":1}' | node dist/server.js
 pnpm run dev  # 自动重新构建
 
 # 在另一个终端测试
-echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"vdt_start_session","arguments":{"repoRoot":".","note":"test"}},"id":1}' | node dist/server.js
+echo '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"start_session","arguments":{"repoRoot":".","note":"test"}},"id":1}' | node dist/server.js
 ```
 
 ### 测试工作流

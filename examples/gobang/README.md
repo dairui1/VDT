@@ -102,7 +102,7 @@ npm test
 
 #### 1. 启动 VDT 会话
 ```javascript
-vdt_start_session({
+start_session({
   repoRoot: './examples/gobang',
   note: 'Testing gobang rendering and game logic bugs'
 })
