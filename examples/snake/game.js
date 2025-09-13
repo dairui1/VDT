@@ -15,13 +15,11 @@ export class SnakeGame {
     }
 
     generateFood() {
-        let food;
-        do {
-            food = {
-                x: Math.floor(Math.random() * this.width),
-                y: Math.floor(Math.random() * this.height)
-            };
-        } while (this.snake.some(segment => segment.x === food.x && segment.y === food.y));
+        // BUG #2: Food can be generated on snake body - removed collision check
+        let food = {
+            x: Math.floor(Math.random() * this.width),
+            y: Math.floor(Math.random() * this.height)
+        };
         return food;
     }
 
@@ -43,7 +41,8 @@ export class SnakeGame {
         head.y += this.direction.y;
 
         // Check wall collision
-        if (head.x < 0 || head.x >= this.width || head.y < 0 || head.y >= this.height) {
+        // BUG #1: Incorrect boundary checking - allows snake to go one step beyond boundary
+        if (head.x < -1 || head.x > this.width || head.y < -1 || head.y > this.height) {
             this.gameOver = true;
             return;
         }
@@ -58,7 +57,9 @@ export class SnakeGame {
 
         // Check food collision
         if (head.x === this.food.x && head.y === this.food.y) {
-            this.score += 10;
+            // BUG #3: Score increases too much and snake doesn't grow properly
+            this.score += this.snake.length; // Should be += 10
+            this.snake.pop(); // This removes the tail even when eating food!
             this.food = this.generateFood();
         } else {
             this.snake.pop();
@@ -99,7 +100,8 @@ export class SnakeGame {
             const newHead = { x: head.x + move.x, y: head.y + move.y };
 
             // Check boundaries
-            if (newHead.x < 0 || newHead.x >= this.width || newHead.y < 0 || newHead.y >= this.height) {
+            // BUG #1 (continued): Same incorrect boundary checking here
+            if (newHead.x < -1 || newHead.x > this.width || newHead.y < -1 || newHead.y > this.height) {
                 return false;
             }
 
