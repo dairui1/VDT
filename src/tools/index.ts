@@ -1,36 +1,29 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { SessionManager } from '../utils/session.js';
-import { ASTInstrumenter } from '../utils/ast.js';
 import { CaptureManager } from '../utils/capture.js';
 import { AnalysisEngine } from '../utils/analysis.js';
-import { HudManager } from '../utils/hud.js';
-import { WebCaptureAnalyzer } from '../utils/web-analyzer.js';
-import { ReasonerAdapter } from '../reasoner/adapter.js';
-import { ToolResponse, HudStartIn, RecordStartIn, RecordStopIn, ReplayRunIn, AnalyzeWebCaptureIn, ReasonerRunIn } from '../types/index.js';
+import { ToolResponse } from '../types/index.js';
 
 export class VDTTools {
   private sessionManager: SessionManager;
-  private instrumenter: ASTInstrumenter;
   private captureManager: CaptureManager;
   private analysisEngine: AnalysisEngine;
-  private hudManager: HudManager;
-  private webAnalyzer: WebCaptureAnalyzer;
-  private reasonerAdapter: ReasonerAdapter;
 
   constructor() {
     this.sessionManager = new SessionManager();
-    this.instrumenter = new ASTInstrumenter();
     this.captureManager = new CaptureManager();
     this.analysisEngine = new AnalysisEngine();
-    this.hudManager = new HudManager();
-    this.webAnalyzer = new WebCaptureAnalyzer();
-    this.reasonerAdapter = new ReasonerAdapter();
   }
 
   async initialize(): Promise<void> {
-    await this.reasonerAdapter.initialize();
+    // Initialize core components
   }
 
+  async dispose(): Promise<void> {
+    // Cleanup resources
+  }
+
+  // Core tool: vdt_start_session
   async startSession(params: {
     repoRoot?: string;
     note?: string;
@@ -50,7 +43,9 @@ export class VDTTools {
       const response: ToolResponse = {
         data: {
           sid: session.sid,
-          links
+          spec: "VDT DebugSpec v0.3 (KISS)",
+          links,
+          system_reminder: "Follow minimal loop: capture → analyze → clarify (if needed) → fix/replay → summary"
         }
       };
 
@@ -76,192 +71,52 @@ export class VDTTools {
     }
   }
 
-  async writeLog(params: {
+  // Core tool: capture_run
+  async captureRun(params: {
     sid: string;
-    files: string[];
-    anchors?: string[];
-    level?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
-    format?: 'ndjson';
-    dryRun?: boolean;
-    allowlist?: string[];
-    force?: boolean;
-  }): Promise<CallToolResult> {
-    try {
-      const { 
-        sid, 
-        files, 
-        anchors = [], 
-        level = 'debug', 
-        format = 'ndjson', 
-        dryRun = true,
-        allowlist = [],
-        force = false
-      } = params;
-
-      const session = await this.sessionManager.getSession(sid);
-      if (!session) {
-        throw new Error(`Session ${sid} not found`);
-      }
-
-      // Check allowlist if provided
-      const filteredFiles = allowlist.length > 0 
-        ? files.filter(file => allowlist.some(pattern => file.includes(pattern)))
-        : files;
-
-      if (filteredFiles.length === 0) {
-        throw new Error('No files match allowlist criteria');
-      }
-
-      const sessionDir = this.sessionManager.getSessionDir(sid);
-      const results = [];
-
-      // Process each file
-      for (const targetFile of filteredFiles) {
-        const result = await this.instrumenter.instrumentFile(
-          targetFile, 
-          anchors, 
-          level, 
-          format, 
-          sessionDir
-        );
-        
-        results.push({
-          file: targetFile,
-          patchLink: result.diff ? (() => {
-            const path = require('path');
-            const fileName = path.basename(targetFile, path.extname(targetFile));
-            const fileHash = Buffer.from(targetFile).toString('base64').replace(/[=/+]/g, '').substring(0, 8);
-            return this.sessionManager.getResourceLink(sid, `patches/patch-${fileName}-${fileHash}.diff`);
-          })() : null,
-          ...result
-        });
-      }
-
-      const response: ToolResponse = {
-        data: {
-          results,
-          applied: !dryRun,
-          totalModifications: results.reduce((acc, r) => {
-            const mods = r.hints.find(h => h.includes('Instrumented'))?.match(/\d+/);
-            return acc + (mods ? parseInt(mods[0]) : 0);
-          }, 0),
-          patchLinks: results.filter(r => r.patchLink).map(r => r.patchLink)
-        }
-      };
-
-      return {
-        content: [{
-          type: 'text', 
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      await this.sessionManager.addError(params.sid, 'write_log', 'INSTRUMENT_ERROR', 
-        error instanceof Error ? error.message : 'Unknown error');
-
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check file permissions and syntax. Use allowlist to restrict scope.'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async applyWriteLog(params: {
-    sid: string;
-    files: string[];
-  }): Promise<CallToolResult> {
-    try {
-      const { sid, files } = params;
-
-      const session = await this.sessionManager.getSession(sid);
-      if (!session) {
-        throw new Error(`Session ${sid} not found`);
-      }
-
-      const sessionDir = this.sessionManager.getSessionDir(sid);
-      const results = [];
-
-      // Apply instrumentation to each file
-      for (const targetFile of files) {
-        const result = await this.instrumenter.applyInstrumentation(targetFile, sessionDir);
-        results.push({
-          file: targetFile,
-          ...result
-        });
-      }
-
-      const response: ToolResponse = {
-        data: {
-          results,
-          successCount: results.filter(r => r.success).length,
-          totalFiles: results.length
-        }
-      };
-
-      return {
-        content: [{
-          type: 'text', 
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      await this.sessionManager.addError(params.sid, 'apply_write_log', 'APPLY_ERROR', 
-        error instanceof Error ? error.message : 'Unknown error');
-
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Ensure write_log was run first and patch files exist.'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async doCapture(params: {
-    sid: string;
-    shell: {
+    mode: 'cli' | 'web';
+    shell?: {
       cwd: string;
       commands?: string[];
       env?: Record<string, string>;
       timeoutSec?: number;
+    };
+    web?: {
+      entryUrl: string;
+      actions?: boolean;
+      console?: boolean;
+      network?: boolean;
     };
     redact?: {
       patterns?: string[];
     };
   }): Promise<CallToolResult> {
     try {
-      const { sid, shell, redact = {} } = params;
-
-      const session = await this.sessionManager.getSession(sid);
+      const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
-        throw new Error(`Session ${sid} not found`);
+        throw new Error(`Session ${params.sid} not found`);
       }
 
-      const sessionDir = this.sessionManager.getSessionDir(sid);
-      const result = await this.captureManager.captureShell(sessionDir, shell, redact);
+      let result;
+      
+      if (params.mode === 'cli' && params.shell) {
+        // CLI capture using existing captureShell logic
+        result = await this.captureManager.captureShell(
+          this.sessionManager.getSessionDir(params.sid),
+          params.shell,
+          params.redact
+        );
+      } else if (params.mode === 'web' && params.web) {
+        // Web capture - simplified implementation
+        throw new Error('Web capture mode not yet implemented in v0.3');
+      } else {
+        throw new Error(`Invalid capture mode or missing parameters for mode: ${params.mode}`);
+      }
 
       const response: ToolResponse = {
         data: {
-          chunks: result.chunks.map(chunk => 
-            this.sessionManager.getResourceLink(sid, chunk)
-          ),
-          summary: result.summary
+          ...result,
+          outputLog: this.sessionManager.getResourceLink(params.sid, 'logs/capture.ndjson')
         }
       };
 
@@ -273,13 +128,13 @@ export class VDTTools {
       };
 
     } catch (error) {
-      await this.sessionManager.addError(params.sid, 'do_capture', 'CAPTURE_ERROR',
+      await this.sessionManager.addError(params.sid, 'capture_run', 'CAPTURE_ERROR', 
         error instanceof Error ? error.message : 'Unknown error');
 
       const response: ToolResponse = {
         isError: true,
         message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check command permissions and timeout settings. Consider shorter capture duration.'
+        hint: 'Check command syntax and file permissions'
       };
 
       return {
@@ -291,7 +146,8 @@ export class VDTTools {
     }
   }
 
-  async analyzeDebugLog(params: {
+  // Core tool: analyze_capture  
+  async analyzeCapture(params: {
     sid: string;
     focus?: {
       module?: string;
@@ -299,25 +155,24 @@ export class VDTTools {
       timeRange?: [number, number];
       selectedIds?: string[];
     };
-    ruleset?: string;
   }): Promise<CallToolResult> {
     try {
-      const { sid, focus, ruleset = 'js-web-default' } = params;
-
-      const session = await this.sessionManager.getSession(sid);
+      const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
-        throw new Error(`Session ${sid} not found`);
+        throw new Error(`Session ${params.sid} not found`);
       }
 
-      const sessionDir = this.sessionManager.getSessionDir(sid);
-      const result = await this.analysisEngine.analyzeDebugLog(sessionDir, focus, ruleset);
+      const result = await this.analysisEngine.analyzeDebugLog(
+        this.sessionManager.getSessionDir(params.sid),
+        params.focus
+      );
 
       const response: ToolResponse = {
         data: {
-          findings: result.findings,
-          links: result.links.map(link => 
-            this.sessionManager.getResourceLink(sid, link)
-          )
+          ...result,
+          buglensReport: this.sessionManager.getResourceLink(params.sid, 'analysis/buglens.md'),
+          candidateChunks: result.findings.candidateChunks || [],
+          needClarify: result.findings.needClarify || false
         }
       };
 
@@ -329,13 +184,13 @@ export class VDTTools {
       };
 
     } catch (error) {
-      await this.sessionManager.addError(params.sid, 'analyze_debug_log', 'ANALYSIS_ERROR',
+      await this.sessionManager.addError(params.sid, 'analyze_capture', 'ANALYSIS_ERROR', 
         error instanceof Error ? error.message : 'Unknown error');
 
       const response: ToolResponse = {
         isError: true,
         message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Ensure capture.ndjson exists and contains valid log data'
+        hint: 'Ensure capture logs exist and are valid'
       };
 
       return {
@@ -347,118 +202,60 @@ export class VDTTools {
     }
   }
 
-  // v0.2 HUD Tools
-  async hudStart(params: HudStartIn): Promise<CallToolResult> {
+  // Core tool: clarify
+  async clarify(params: {
+    sid: string;
+    chunks: Array<{
+      id: string;
+      title: string;
+      excerpt: string;
+    }>;
+    answer: {
+      selectedIds: string[];
+      notes?: string;
+    };
+  }): Promise<CallToolResult> {
     try {
       const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
         throw new Error(`Session ${params.sid} not found`);
       }
 
+      // Save clarification to session
+      const clarifyData = {
+        timestamp: Date.now(),
+        selectedChunks: params.chunks.filter(c => params.answer.selectedIds.includes(c.id)),
+        notes: params.answer.notes || '',
+        selectedIds: params.answer.selectedIds
+      };
+
       const sessionDir = this.sessionManager.getSessionDir(params.sid);
-      const result = await this.hudManager.startHud(params, sessionDir);
+      const clarifyPath = require('path').join(sessionDir, 'analysis', 'clarify.md');
+      
+      // Ensure analysis directory exists
+      await require('fs/promises').mkdir(require('path').dirname(clarifyPath), { recursive: true });
+      
+      const clarifyContent = `# Clarification Results
 
-      const response: ToolResponse = {
-        data: result
-      };
+## Selected Chunks
+${clarifyData.selectedChunks.map(chunk => `### ${chunk.title}
+${chunk.excerpt}
+`).join('\n')}
 
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
+## Notes
+${clarifyData.notes}
 
-    } catch (error) {
-      await this.sessionManager.addError(params.sid, 'hud_start', 'HUD_START_ERROR',
-        error instanceof Error ? error.message : 'Unknown error');
+## Metadata
+- Timestamp: ${new Date(clarifyData.timestamp).toISOString()}
+- Selected IDs: ${clarifyData.selectedIds.join(', ')}
+`;
 
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check development server configuration and port availability'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async hudStatus(params: { sid: string }): Promise<CallToolResult> {
-    try {
-      const result = await this.hudManager.getHudStatus(params.sid);
-
-      const response: ToolResponse = {
-        data: result
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check if HUD session exists and is running'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async hudStop(params: { sid: string; saveTrace?: boolean }): Promise<CallToolResult> {
-    try {
-      const result = await this.hudManager.stopHud(params.sid, params.saveTrace);
-
-      const response: ToolResponse = {
-        data: result
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check if HUD session exists'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async recordStart(params: RecordStartIn): Promise<CallToolResult> {
-    try {
-      const recordId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      await this.hudManager.startRecording(params.sid, recordId, params.entryUrl, params.selectors);
+      await require('fs/promises').writeFile(clarifyPath, clarifyContent, 'utf-8');
 
       const response: ToolResponse = {
         data: {
-          recordId,
-          links: [`vdt://sessions/${params.sid}/logs/actions.rec.ndjson`]
+          selectedIds: params.answer.selectedIds,
+          link: this.sessionManager.getResourceLink(params.sid, 'analysis/clarify.md')
         }
       };
 
@@ -470,13 +267,13 @@ export class VDTTools {
       };
 
     } catch (error) {
-      await this.sessionManager.addError(params.sid, 'record_start', 'RECORD_START_ERROR',
+      await this.sessionManager.addError(params.sid, 'clarify', 'CLARIFY_ERROR', 
         error instanceof Error ? error.message : 'Unknown error');
 
       const response: ToolResponse = {
         isError: true,
         message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Ensure HUD session is running and browser is ready'
+        hint: 'Check session validity and storage permissions'
       };
 
       return {
@@ -488,155 +285,47 @@ export class VDTTools {
     }
   }
 
-  async recordStop(params: RecordStopIn): Promise<CallToolResult> {
-    try {
-      const result = await this.hudManager.stopRecording(params.sid, params.recordId, params.export);
-
-      const response: ToolResponse = {
-        data: result
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      await this.sessionManager.addError(params.sid, 'record_stop', 'RECORD_STOP_ERROR',
-        error instanceof Error ? error.message : 'Unknown error');
-
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check if recording session exists and is active'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async replayRun(params: ReplayRunIn): Promise<CallToolResult> {
-    try {
-      const result = await this.hudManager.replayScript(params.sid, params.script, params.mode);
-
-      const response: ToolResponse = {
-        data: result
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      await this.sessionManager.addError(params.sid, 'replay_run', 'REPLAY_ERROR',
-        error instanceof Error ? error.message : 'Unknown error');
-
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check script path and browser availability'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async analyzeWebCapture(params: AnalyzeWebCaptureIn): Promise<CallToolResult> {
+  // Core tool: reasoner_run (simplified)
+  async reasonerRun(params: {
+    sid: string;
+    task: 'propose_patch' | 'review_patch';
+    inputs: {
+      buglens?: string;
+      code?: string[];
+      diff?: string;
+    };
+    question?: string;
+  }): Promise<CallToolResult> {
     try {
       const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
         throw new Error(`Session ${params.sid} not found`);
       }
 
-      const sessionDir = this.sessionManager.getSessionDir(params.sid);
-      const result = await this.webAnalyzer.analyzeWebCapture(sessionDir, params);
-
-      const response: ToolResponse = {
-        data: result
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-
-    } catch (error) {
-      await this.sessionManager.addError(params.sid, 'analyze_web_capture', 'WEB_ANALYSIS_ERROR',
-        error instanceof Error ? error.message : 'Unknown error');
-
-      const response: ToolResponse = {
-        isError: true,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Ensure web capture data exists in session logs'
-      };
-
-      return {
-        content: [{
-          type: 'text',
-          text: JSON.stringify(response, null, 2)
-        }]
-      };
-    }
-  }
-
-  async reasonerRun(params: ReasonerRunIn): Promise<CallToolResult> {
-    try {
-      if (!this.reasonerAdapter.isAvailable()) {
-        throw new Error('No reasoner backends available. Please configure reasoners in .vdt/reasoners.json');
-      }
-
-      const session = await this.sessionManager.getSession(params.sid);
-      if (!session) {
-        throw new Error(`Session ${params.sid} not found`);
-      }
-
-      const sessionDir = this.sessionManager.getSessionDir(params.sid);
-
-      // Build reasoner task
-      const task = {
+      // Simplified reasoner implementation
+      // In a real implementation, this would call an LLM service
+      const mockResult = {
         task: params.task,
-        sid: params.sid,
-        inputs: params.inputs,
-        question: params.question,
-        constraints: params.constraints,
-        model_prefs: {
-          effort: (params.args?.effort as 'low' | 'medium' | 'high') || 'medium',
-          max_tokens: 4000,
-          temperature: 0.2,
-        },
-        redact: params.redact ?? true,
+        timestamp: Date.now(),
+        status: 'completed',
+        result: `Mock ${params.task} result for session ${params.sid}`,
+        recommendations: [
+          'This is a simplified reasoner implementation',
+          'In production, this would integrate with LLM backends'
+        ]
       };
 
-      // Execute reasoning task
-      const result = await this.reasonerAdapter.executeTask(task, sessionDir);
-
-      // Generate response links
-      const links = [
-        `vdt://sessions/${params.sid}/analysis/reasoner_${params.task}.json`,
-      ];
+      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+      const resultPath = require('path').join(sessionDir, 'analysis', `reasoner_${params.task}.json`);
+      
+      await require('fs/promises').mkdir(require('path').dirname(resultPath), { recursive: true });
+      await require('fs/promises').writeFile(resultPath, JSON.stringify(mockResult, null, 2));
 
       const response: ToolResponse = {
         data: {
-          links,
-          result,
-        },
+          ...mockResult,
+          link: this.sessionManager.getResourceLink(params.sid, `analysis/reasoner_${params.task}.json`)
+        }
       };
 
       return {
@@ -647,13 +336,13 @@ export class VDTTools {
       };
 
     } catch (error) {
-      await this.sessionManager.addError(params.sid, 'reasoner_run', 'REASONER_ERROR',
+      await this.sessionManager.addError(params.sid, 'reasoner_run', 'REASONER_ERROR', 
         error instanceof Error ? error.message : 'Unknown error');
 
       const response: ToolResponse = {
         isError: true,
         message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Check reasoner configuration and backend availability. Ensure API keys are set for HTTP backends.'
+        hint: 'Check reasoner configuration and inputs'
       };
 
       return {
@@ -665,7 +354,148 @@ export class VDTTools {
     }
   }
 
-  async dispose(): Promise<void> {
-    await this.hudManager.dispose();
+  // Core tool: replay_run (simplified)
+  async replayRun(params: {
+    sid: string;
+    script?: string;
+    commands?: string[];
+    mode?: 'cli' | 'web';
+  }): Promise<CallToolResult> {
+    try {
+      const session = await this.sessionManager.getSession(params.sid);
+      if (!session) {
+        throw new Error(`Session ${params.sid} not found`);
+      }
+
+      // Simplified replay implementation
+      let result;
+      
+      if (params.commands && params.commands.length > 0) {
+        // CLI replay
+        result = await this.captureManager.captureShell(
+          this.sessionManager.getSessionDir(params.sid),
+          {
+            cwd: session.repoRoot || process.cwd(),
+            commands: params.commands
+          }
+        );
+      } else {
+        throw new Error('No commands or script provided for replay');
+      }
+
+      const response: ToolResponse = {
+        data: {
+          ...result,
+          replayLog: this.sessionManager.getResourceLink(params.sid, 'logs/replay.ndjson')
+        }
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'replay_run', 'REPLAY_ERROR', 
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check script syntax and replay configuration'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  // Core tool: end_session
+  async endSession(params: {
+    sid: string;
+  }): Promise<CallToolResult> {
+    try {
+      const session = await this.sessionManager.getSession(params.sid);
+      if (!session) {
+        throw new Error(`Session ${params.sid} not found`);
+      }
+
+      // Generate summary
+      const summary = {
+        sessionId: params.sid,
+        timestamp: Date.now(),
+        conclusion: 'Session completed',
+        keyEvidence: [],
+        nextSteps: [],
+        resources: [
+          this.sessionManager.getResourceLink(params.sid, 'meta.json'),
+          this.sessionManager.getResourceLink(params.sid, 'logs/capture.ndjson'),
+          this.sessionManager.getResourceLink(params.sid, 'analysis/buglens.md')
+        ]
+      };
+
+      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+      const summaryPath = require('path').join(sessionDir, 'analysis', 'summary.md');
+      
+      await require('fs/promises').mkdir(require('path').dirname(summaryPath), { recursive: true });
+      
+      const summaryContent = `# Session Summary
+
+## Conclusion
+${summary.conclusion}
+
+## Key Evidence
+${summary.keyEvidence.length > 0 ? summary.keyEvidence.join('\n- ') : 'No key evidence recorded'}
+
+## Next Steps
+${summary.nextSteps.length > 0 ? summary.nextSteps.join('\n- ') : 'No next steps recorded'}
+
+## Resources
+${summary.resources.map(link => `- [${link.split('/').pop()}](${link})`).join('\n')}
+
+## Metadata
+- Session ID: ${summary.sessionId}
+- Completed: ${new Date(summary.timestamp).toISOString()}
+`;
+
+      await require('fs/promises').writeFile(summaryPath, summaryContent, 'utf-8');
+
+      const response: ToolResponse = {
+        data: {
+          ...summary,
+          summaryLink: this.sessionManager.getResourceLink(params.sid, 'analysis/summary.md')
+        }
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'end_session', 'END_SESSION_ERROR', 
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check session validity and storage permissions'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
   }
 }

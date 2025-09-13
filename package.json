@@ -1,18 +1,15 @@
 {
   "name": "vdt-mcp",
-  "version": "0.2.0",
-  "description": "Visual Debugging Tool - MCP Server for debugging workflows with Web HUD support",
+  "version": "0.3.0",
+  "description": "Visual Debugging Tool - MCP Server for debugging workflows (KISS v0.3)",
   "type": "module",
   "main": "dist/server.js",
   "bin": {
     "vdt-mcp": "dist/bin.js"
   },
   "scripts": {
-    "build": "pnpm run build:hud && tsc",
-    "build:hud": "cd hud-ui && pnpm build",
-    "build:all": "pnpm -r build",
+    "build": "tsc",
     "dev": "tsc --watch",
-    "dev:hud": "cd hud-ui && pnpm dev",
     "start": "node dist/server.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "eslint src/**/*.ts",
@@ -30,20 +27,15 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "diff": "^5.1.0",
-    "express": "^4.18.0",
     "node-pty": "^1.0.0",
     "playwright": "^1.40.0",
-    "ts-morph": "^21.0.0",
-    "uuid": "^9.0.0",
-    "ws": "^8.14.0"
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/diff": "^5.0.0",
-    "@types/express": "^4.17.0",
     "@types/jest": "^29.0.0",
     "@types/node": "^20.0.0",
     "@types/uuid": "^9.0.0",
-    "@types/ws": "^8.5.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "eslint": "^8.0.0",

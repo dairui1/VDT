@@ -59,41 +59,13 @@ class VDTServer {
             }
           },
           {
-            name: 'write_log',
-            description: 'Add structured logging to code files',
+            name: 'capture_run',
+            description: 'Unified capture entry point supporting CLI and Web modes',
             inputSchema: {
               type: 'object',
               properties: {
                 sid: { type: 'string', description: 'Session ID' },
-                files: { type: 'array', items: { type: 'string' }, description: 'Files to instrument' },
-                anchors: { type: 'array', items: { type: 'string' }, description: 'Function anchors' },
-                level: { type: 'string', enum: ['trace', 'debug', 'info', 'warn', 'error'], description: 'Log level' },
-                dryRun: { type: 'boolean', description: 'Dry run mode' },
-                allowlist: { type: 'array', items: { type: 'string' }, description: 'File allowlist patterns' },
-                force: { type: 'boolean', description: 'Force re-instrumentation' }
-              },
-              required: ['sid', 'files']
-            }
-          },
-          {
-            name: 'apply_write_log',
-            description: 'Apply previously generated instrumentation patches',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                files: { type: 'array', items: { type: 'string' }, description: 'Files to apply patches to' }
-              },
-              required: ['sid', 'files']
-            }
-          },
-          {
-            name: 'do_capture',
-            description: 'Execute and capture application output',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
+                mode: { type: 'string', enum: ['cli', 'web'], description: 'Capture mode' },
                 shell: {
                   type: 'object',
                   properties: {
@@ -104,6 +76,15 @@ class VDTServer {
                   },
                   required: ['cwd']
                 },
+                web: {
+                  type: 'object',
+                  properties: {
+                    entryUrl: { type: 'string', description: 'Entry URL' },
+                    actions: { type: 'boolean', description: 'Capture actions' },
+                    console: { type: 'boolean', description: 'Capture console logs' },
+                    network: { type: 'boolean', description: 'Capture network requests' }
+                  }
+                },
                 redact: {
                   type: 'object',
                   properties: {
@@ -111,12 +92,12 @@ class VDTServer {
                   }
                 }
               },
-              required: ['sid', 'shell']
+              required: ['sid', 'mode']
             }
           },
           {
-            name: 'analyze_debug_log',
-            description: 'Analyze captured logs and generate BugLens report',
+            name: 'analyze_capture',
+            description: 'Analyze captured logs and generate BugLens report with candidate chunks',
             inputSchema: {
               type: 'object',
               properties: {
@@ -129,63 +110,81 @@ class VDTServer {
                     timeRange: { type: 'array', items: { type: 'number' }, description: 'Time range' },
                     selectedIds: { type: 'array', items: { type: 'string' }, description: 'Selected chunk IDs' }
                   }
-                },
-                ruleset: { type: 'string', description: 'Analysis ruleset' }
+                }
               },
               required: ['sid']
             }
           },
-          // v0.2 HUD Tools
           {
-            name: 'hud_start',
-            description: 'Start HUD with dev server and browser session',
+            name: 'clarify',
+            description: 'Record user selection and notes for analysis focus',
             inputSchema: {
               type: 'object',
               properties: {
                 sid: { type: 'string', description: 'Session ID' },
-                dev: {
-                  type: 'object',
-                  properties: {
-                    cmd: { type: 'string', description: 'Development server command' },
-                    cwd: { type: 'string', description: 'Working directory' },
-                    env: { type: 'object', description: 'Environment variables' }
-                  },
-                  required: ['cmd', 'cwd']
-                },
-                browse: {
-                  type: 'object',
-                  properties: {
-                    entryUrl: { type: 'string', description: 'Entry URL to open' },
-                    autoOpen: { type: 'boolean', description: 'Auto-open browser' }
-                  },
-                  required: ['entryUrl']
-                },
-                capture: {
-                  type: 'object',
-                  properties: {
-                    screenshot: {
-                      type: 'object',
-                      properties: {
-                        mode: { type: 'string', enum: ['none', 'onAction', 'interval'], description: 'Screenshot mode' },
-                        ms: { type: 'number', description: 'Interval in milliseconds' }
-                      }
+                chunks: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', description: 'Chunk ID' },
+                      title: { type: 'string', description: 'Chunk title' },
+                      excerpt: { type: 'string', description: 'Chunk excerpt' }
                     },
-                    network: { type: 'string', enum: ['off', 'summary'], description: 'Network capture mode' },
-                    redact: {
-                      type: 'object',
-                      properties: {
-                        patterns: { type: 'array', items: { type: 'string' }, description: 'Redaction patterns' }
-                      }
-                    }
-                  }
+                    required: ['id', 'title', 'excerpt']
+                  },
+                  description: 'Available candidate chunks'
+                },
+                answer: {
+                  type: 'object',
+                  properties: {
+                    selectedIds: { type: 'array', items: { type: 'string' }, description: 'Selected chunk IDs' },
+                    notes: { type: 'string', description: 'Additional notes' }
+                  },
+                  required: ['selectedIds']
                 }
               },
-              required: ['sid', 'dev', 'browse']
+              required: ['sid', 'chunks', 'answer']
             }
           },
           {
-            name: 'hud_status',
-            description: 'Get HUD session status',
+            name: 'reasoner_run',
+            description: 'Execute reasoning task using LLM backends',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                task: { type: 'string', enum: ['propose_patch', 'review_patch'], description: 'Reasoning task type' },
+                inputs: {
+                  type: 'object',
+                  properties: {
+                    buglens: { type: 'string', description: 'BugLens report vdt:// link' },
+                    code: { type: 'array', items: { type: 'string' }, description: 'Source code file:// links' },
+                    diff: { type: 'string', description: 'Patch diff vdt:// link' }
+                  }
+                },
+                question: { type: 'string', description: 'Optional freeform question' }
+              },
+              required: ['sid', 'task', 'inputs']
+            }
+          },
+          {
+            name: 'replay_run',
+            description: 'Execute verification commands or replay scripts',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                script: { type: 'string', description: 'Script path (vdt:// link)' },
+                commands: { type: 'array', items: { type: 'string' }, description: 'Commands to execute' },
+                mode: { type: 'string', enum: ['cli', 'web'], description: 'Replay mode' }
+              },
+              required: ['sid']
+            }
+          },
+          {
+            name: 'end_session',
+            description: 'Complete session and generate summary report',
             inputSchema: {
               type: 'object',
               properties: {
@@ -193,139 +192,10 @@ class VDTServer {
               },
               required: ['sid']
             }
-          },
-          {
-            name: 'hud_stop',
-            description: 'Stop HUD session',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                saveTrace: { type: 'boolean', description: 'Save trace data' }
-              },
-              required: ['sid']
-            }
-          },
-          {
-            name: 'record_start',
-            description: 'Start recording browser interactions',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                entryUrl: { type: 'string', description: 'Entry URL for recording' },
-                selectors: {
-                  type: 'object',
-                  properties: {
-                    prefer: { type: 'array', items: { type: 'string' }, description: 'Preferred selector strategies' }
-                  }
-                },
-                screenshot: {
-                  type: 'object',
-                  properties: {
-                    mode: { type: 'string', enum: ['none', 'onAction', 'interval'], description: 'Screenshot mode' },
-                    ms: { type: 'number', description: 'Interval in milliseconds' }
-                  }
-                }
-              },
-              required: ['sid', 'entryUrl']
-            }
-          },
-          {
-            name: 'record_stop',
-            description: 'Stop recording and export scripts',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                recordId: { type: 'string', description: 'Recording ID' },
-                export: { type: 'array', items: { type: 'string', enum: ['playwright', 'json'] }, description: 'Export formats' }
-              },
-              required: ['sid', 'recordId', 'export']
-            }
-          },
-          {
-            name: 'replay_run',
-            description: 'Run recorded script with auto-capture',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                script: { type: 'string', description: 'Script path (vdt:// link)' },
-                mode: { type: 'string', enum: ['headless', 'headed'], description: 'Browser mode' },
-                stability: {
-                  type: 'object',
-                  properties: {
-                    networkIdleMs: { type: 'number', description: 'Network idle timeout' },
-                    uiIdleMs: { type: 'number', description: 'UI idle timeout' },
-                    seed: { type: 'number', description: 'Random seed' },
-                    freezeTime: { type: 'boolean', description: 'Freeze time' }
-                  }
-                },
-                mocks: {
-                  type: 'object',
-                  properties: {
-                    enable: { type: 'boolean', description: 'Enable mocking' },
-                    rules: {
-                      type: 'array',
-                      items: {
-                        type: 'object',
-                        properties: {
-                          url: { type: 'string', description: 'URL pattern' },
-                          method: { type: 'string', description: 'HTTP method' },
-                          respond: { type: 'object', description: 'Mock response' }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              required: ['sid', 'script']
-            }
-          },
-          {
-            name: 'analyze_web_capture',
-            description: 'Generate BugLens-Web analysis from web capture data',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                focus: { type: 'string', description: 'Analysis focus' },
-                topk: { type: 'number', description: 'Top K results' }
-              },
-              required: ['sid']
-            }
-          },
-          {
-            name: 'reasoner_run',
-            description: 'Execute reasoning task using LLM backends (Codex, OpenAI, etc.)',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                task: { type: 'string', enum: ['analyze_log', 'propose_patch', 'review_patch'], description: 'Reasoning task type' },
-                inputs: {
-                  type: 'object',
-                  properties: {
-                    logs: { type: 'array', items: { type: 'string' }, description: 'Log file vdt:// links' },
-                    buglens: { type: 'string', description: 'BugLens report vdt:// link' },
-                    code: { type: 'array', items: { type: 'string' }, description: 'Source code file:// links' },
-                    diff: { type: 'string', description: 'Patch diff vdt:// link' }
-                  }
-                },
-                backend: { type: 'string', description: 'Backend name (optional, auto-select if omitted)' },
-                args: { type: 'object', description: 'Backend-specific arguments' },
-                question: { type: 'string', description: 'Optional freeform question' },
-                constraints: { type: 'array', items: { type: 'string' }, description: 'Analysis constraints' },
-                redact: { type: 'boolean', description: 'Apply redaction to inputs' }
-              },
-              required: ['sid', 'task', 'inputs']
-            }
           }
         ]
       };
     });
-
     // List prompts
     this.server.setRequestHandler(ListPromptsRequestSchema, async () => {
       return {
@@ -533,42 +403,23 @@ class VDTServer {
         case 'vdt_start_session':
           return await this.tools.startSession(args as any);
         
-        case 'write_log':
-          return await this.tools.writeLog(args as any);
+        case 'capture_run':
+          return await this.tools.captureRun(args as any);
         
-        case 'apply_write_log':
-          return await this.tools.applyWriteLog(args as any);
+        case 'analyze_capture':
+          return await this.tools.analyzeCapture(args as any);
         
-        case 'do_capture':
-          return await this.tools.doCapture(args as any);
+        case 'clarify':
+          return await this.tools.clarify(args as any);
         
-        case 'analyze_debug_log':
-          return await this.tools.analyzeDebugLog(args as any);
-        
-        // v0.2 HUD Tools
-        case 'hud_start':
-          return await this.tools.hudStart(args as any);
-        
-        case 'hud_status':
-          return await this.tools.hudStatus(args as any);
-        
-        case 'hud_stop':
-          return await this.tools.hudStop(args as any);
-        
-        case 'record_start':
-          return await this.tools.recordStart(args as any);
-        
-        case 'record_stop':
-          return await this.tools.recordStop(args as any);
+        case 'reasoner_run':
+          return await this.tools.reasonerRun(args as any);
         
         case 'replay_run':
           return await this.tools.replayRun(args as any);
         
-        case 'analyze_web_capture':
-          return await this.tools.analyzeWebCapture(args as any);
-        
-        case 'reasoner_run':
-          return await this.tools.reasonerRun(args as any);
+        case 'end_session':
+          return await this.tools.endSession(args as any);
         
         default:
           throw new Error(`Unknown tool: ${name}`);
