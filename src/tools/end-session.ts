@@ -10,7 +10,13 @@ export class EndSessionTool extends BaseTool {
     try {
       const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
-        throw new Error(`Session ${params.sid} not found`);
+        return this.createErrorResponse(
+          params.sid,
+          'end_session',
+          'SESSION_NOT_FOUND',
+          new Error(`Session ${params.sid} not found`),
+          'Check session ID and ensure session was created successfully'
+        );
       }
 
       // Generate summary
@@ -27,7 +33,7 @@ export class EndSessionTool extends BaseTool {
         ]
       };
 
-      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+      const sessionDir = this.sessionManager.getSessionDir(params.sid, session.repoRoot);
       const summaryPath = path.join(sessionDir, 'analysis', 'summary.md');
       
       await fs.mkdir(path.dirname(summaryPath), { recursive: true });

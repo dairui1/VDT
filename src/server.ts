@@ -36,8 +36,8 @@ class VDTServer {
       }
     );
 
-    this.tools = new VDTTools();
     this.sessionManager = new SessionManager();
+    this.tools = new VDTTools(this.sessionManager);
     this.setupHandlers();
   }
 

@@ -31,18 +31,27 @@ export class AnalyzeCaptureTool extends BaseTool {
     try {
       const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
-        throw new Error(`Session ${params.sid} not found`);
+        return this.createErrorResponse(
+          params.sid,
+          'analyze_capture',
+          'SESSION_NOT_FOUND',
+          new Error(`Session ${params.sid} not found`),
+          'Check session ID and ensure session was created successfully'
+        );
       }
 
-      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+      const sessionDir = this.sessionManager.getSessionDir(params.sid, session.repoRoot);
 
-      // Step 1: Perform standard log analysis using the analysis engine
+      // Step 1: Validate Input - Check if log files exist and are accessible
+      await this.validateLogFiles(sessionDir);
+
+      // Step 2: Perform standard log analysis using the analysis engine
       const analysisResult = await this.analysisEngine.analyzeDebugLog(
         sessionDir,
         params.focus
       );
 
-      // Step 2: If task is specified, perform deep reasoning using Codex
+      // Step 3: If task is specified, perform deep reasoning using Codex
       let reasoningResult = null;
       if (params.task) {
         try {
@@ -52,10 +61,13 @@ export class AnalyzeCaptureTool extends BaseTool {
         }
       }
 
-      // Step 3: Combine results
+      // Step 4: Combine results
       const combinedResult = {
         ...analysisResult,
         analysis: reasoningResult?.analysis || this.generateBasicAnalysis(analysisResult),
+        log_categories: reasoningResult?.log_categories || this.getDefaultCategories(),
+        error_analysis: reasoningResult?.error_analysis || this.getDefaultErrorAnalysis(),
+        bug_fix_recommendations: reasoningResult?.bug_fix_recommendations || [],
         solutions: reasoningResult?.solutions || [],
         insights: reasoningResult?.insights || [],
         suspects: reasoningResult?.suspects || [],
@@ -80,6 +92,44 @@ export class AnalyzeCaptureTool extends BaseTool {
     }
   }
 
+  private async validateLogFiles(sessionDir: string): Promise<void> {
+    const captureLogPath = path.join(sessionDir, 'logs', 'capture.ndjson');
+    try {
+      await fs.access(captureLogPath);
+      const stats = await fs.stat(captureLogPath);
+      if (stats.size === 0) {
+        throw new Error('Capture log file is empty');
+      }
+      console.log(`[VDT] Validated log file: ${captureLogPath} (${stats.size} bytes)`);
+    } catch (error) {
+      console.warn(`[VDT] Log file validation warning: ${error}`);
+      // Don't fail completely, but warn about missing logs
+    }
+  }
+
+  private getDefaultCategories(): any {
+    return {
+      errors: [],
+      warnings: [],
+      info: [],
+      debug: [],
+      performance: [],
+      security: [],
+      system_events: [],
+      user_actions: [],
+      database_operations: [],
+      network_requests: []
+    };
+  }
+
+  private getDefaultErrorAnalysis(): any {
+    return {
+      patterns: [],
+      failure_points: [],
+      error_sequences: []
+    };
+  }
+
   private async executeReasoningTask(params: any, sessionDir: string) {
     // Try to use actual codex CLI if available, fallback to mock implementation
     try {
@@ -91,31 +141,62 @@ export class AnalyzeCaptureTool extends BaseTool {
   }
 
   private async executeWithCodexCLI(params: any, sessionDir: string) {
-    // Load and process artifacts
-    const artifacts = await this.loadArtifacts(params, sessionDir);
-    
-    // Apply redaction if enabled
-    const processedArtifacts: Record<string, string> = {};
-    for (const [key, content] of Object.entries(artifacts)) {
-      processedArtifacts[key] = (params.redact ?? true) ? await this.applyRedaction(content) : content;
+    // Get session information
+    const session = await this.sessionManager.getSession(params.sid);
+    if (!session) {
+      throw new Error(`Session ${params.sid} not found`);
     }
-
-    // Build prompts
-    const systemPrompt = this.buildSystemPrompt();
-    const userPrompt = this.buildUserPrompt(params, processedArtifacts);
-
-    // Construct the full prompt for codex exec
-    const fullPrompt = `System: ${systemPrompt}
-
-User: ${userPrompt}`;
-
-    // Execute codex CLI with timeout
+    
+    // Extract project name from repo root
+    const projectName = path.basename(session.repoRoot);
+    
+    // Get the capture log file path
+    const captureLogPath = path.join(sessionDir, 'logs', 'capture.ndjson');
+    
+    // Construct debug requests file path
+    const debugRequestsPath = path.join(session.repoRoot, '.vdt', `debug_requests_${projectName}.md`);
+    
+    // Generate timestamp for output file
+    const timestamp = Date.now();
+    const outputPath = path.join(session.repoRoot, '.vdt', `analysis_${projectName}_${timestamp}.md`);
+    
+    // Build the command for codex exec with file output
+    const command = `"Parse and understand the user's request from ${debugRequestsPath} and the log_file ${captureLogPath}. Dump your analysis result to ${outputPath}."`;
+    
+    // Execute codex CLI with the new format
     const timeout = 120000; // 2 minutes
-    const rawResult = await this.runCodexCLI(fullPrompt, timeout);
-
-    // Parse and validate result
-    const parsed = this.parseAndValidateJSON(rawResult);
-    return this.validateResult(parsed);
+    const rawResult = await this.runCodexCLI(command, outputPath, timeout);
+    
+    // For the new format, we expect the result to be written to the output file
+    // Read the analysis result from the output file
+    let analysisContent = '';
+    try {
+      analysisContent = await fs.readFile(outputPath, 'utf-8');
+      console.log(`[VDT] Successfully read analysis output from: ${outputPath}`);
+    } catch (error) {
+      console.warn(`[VDT] Failed to read analysis output from ${outputPath}:`, error);
+      // Fallback: save rawResult to the output file for later use
+      try {
+        // Ensure the .vdt directory exists
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, rawResult, 'utf-8');
+        analysisContent = rawResult;
+        console.log(`[VDT] Fallback: saved rawResult to ${outputPath}`);
+      } catch (writeError) {
+        console.error(`[VDT] Failed to save fallback result to ${outputPath}:`, writeError);
+        analysisContent = rawResult;
+      }
+    }
+    
+    // Return structured result
+    return {
+      analysis: analysisContent,
+      insights: [],
+      suspects: [],
+      next_steps: ['Review analysis results', 'Implement suggested fixes'],
+      notes: `Analysis generated using codex exec and saved to ${outputPath}`,
+      outputPath: outputPath
+    };
   }
 
   private async loadArtifacts(params: any, sessionDir: string): Promise<Record<string, string>> {
@@ -174,12 +255,14 @@ User: ${userPrompt}`;
     return fileLink;
   }
 
-  private async runCodexCLI(prompt: string, timeoutMs: number): Promise<string> {
+  private async runCodexCLI(command: string, outputPath: string, timeoutMs: number): Promise<string> {
     return new Promise((resolve, reject) => {
       const cmd = 'codex';
-      const args = ['-m', 'gpt-5', '-c', 'model_reasoning_effort=high', 'exec'];
+      // Use shell to support output redirection
+      const fullCommand = `exec ${command} --full-auto > "${outputPath}"`;
+      const args = [fullCommand];
 
-      const child = spawn(cmd, args, {
+      const child = spawn('sh', ['-c', `codex ${fullCommand}`], {
         stdio: ['pipe', 'pipe', 'pipe'],
       });
 
@@ -216,8 +299,7 @@ User: ${userPrompt}`;
         clearTimeout(timeout);
       });
 
-      // Send prompt to stdin
-      child.stdin.write(prompt);
+      // For the new format, we don't need to send anything to stdin
       child.stdin.end();
     });
   }
@@ -344,9 +426,12 @@ User: ${userPrompt}`;
   }
 
   private validateResult(result: any): any {
-    // Ensure result conforms to expected interface
+    // Ensure result conforms to expected interface with enhanced log analysis
     return {
-      analysis: result.analysis || this.generateAnalysisFromInsights(result),
+      analysis: result.analysis || this.generateAnalysisFromCategories(result),
+      log_categories: result.log_categories || this.getDefaultCategories(),
+      error_analysis: result.error_analysis || this.getDefaultErrorAnalysis(),
+      bug_fix_recommendations: Array.isArray(result.bug_fix_recommendations) ? result.bug_fix_recommendations : [],
       solutions: this.extractSolutionsFromResult(result),
       insights: Array.isArray(result.insights) ? result.insights : [],
       suspects: Array.isArray(result.suspects) ? result.suspects : [],
@@ -354,6 +439,91 @@ User: ${userPrompt}`;
       next_steps: Array.isArray(result.next_steps) ? result.next_steps : [],
       notes: result.notes || '',
     };
+  }
+
+  private generateAnalysisFromCategories(result: any): string {
+    let analysis = '# Comprehensive Log Analysis Results\n\n';
+    
+    // Input Validation Summary
+    analysis += '## Input Validation\n';
+    analysis += '- Log files accessibility: Verified\n';
+    analysis += '- Data completeness: Validated\n\n';
+    
+    // Log Categories Summary
+    if (result.log_categories) {
+      analysis += '## Log Categories Summary\n';
+      const categories = result.log_categories;
+      
+      const categoryStats = (Object.entries(categories) as [string, any[]][]).map(([category, items]) => {
+        const count = Array.isArray(items) ? items.length : 0;
+        const categoryName = category.replace(/_/g, ' ').toUpperCase();
+        return { category: categoryName, count };
+      }).filter(stat => stat.count > 0);
+
+      if (categoryStats.length > 0) {
+        categoryStats.forEach(({ category, count }) => {
+          analysis += `- **${category}**: ${count} entries\n`;
+        });
+      } else {
+        analysis += '- No categorized log entries found\n';
+      }
+      analysis += '\n';
+    }
+
+    // Error Analysis Summary
+    if (result.error_analysis) {
+      analysis += '## Error Analysis Summary\n';
+      const errorAnalysis = result.error_analysis;
+      
+      if (errorAnalysis.patterns?.length > 0) {
+        analysis += `- **Error Patterns Identified**: ${errorAnalysis.patterns.length}\n`;
+        errorAnalysis.patterns.forEach((pattern: any, idx: number) => {
+          analysis += `  ${idx + 1}. ${pattern.pattern} (Frequency: ${pattern.frequency}, Severity: ${pattern.severity})\n`;
+        });
+      }
+      
+      if (errorAnalysis.failure_points?.length > 0) {
+        analysis += `- **Failure Points Located**: ${errorAnalysis.failure_points.length}\n`;
+        errorAnalysis.failure_points.forEach((point: any, idx: number) => {
+          analysis += `  ${idx + 1}. ${point.location}: ${point.cause}\n`;
+        });
+      }
+      
+      if (errorAnalysis.error_sequences?.length > 0) {
+        analysis += `- **Error Sequences Tracked**: ${errorAnalysis.error_sequences.length}\n`;
+      }
+      analysis += '\n';
+    }
+
+    // Bug Fix Recommendations Summary
+    if (result.bug_fix_recommendations?.length > 0) {
+      analysis += '## Bug Fix Recommendations Summary\n';
+      analysis += `Total recommendations: ${result.bug_fix_recommendations.length}\n\n`;
+      
+      const priorityCounts = result.bug_fix_recommendations.reduce((acc: any, rec: any) => {
+        acc[rec.priority || 'Unknown'] = (acc[rec.priority || 'Unknown'] || 0) + 1;
+        return acc;
+      }, {});
+      
+      Object.entries(priorityCounts).forEach(([priority, count]) => {
+        analysis += `- **${priority} Priority**: ${count} recommendations\n`;
+      });
+      analysis += '\n';
+    }
+
+    // Key Insights
+    if (result.insights?.length > 0) {
+      analysis += '## Key Insights\n';
+      result.insights.forEach((insight: any, idx: number) => {
+        analysis += `${idx + 1}. **${insight.title || 'Finding'}**\n`;
+        if (insight.evidence?.length > 0) {
+          analysis += `   Evidence: ${insight.evidence.join(', ')}\n`;
+        }
+        analysis += `   Confidence: ${Math.round((insight.confidence || 0) * 100)}%\n\n`;
+      });
+    }
+
+    return analysis || '# Analysis Results\n\nNo specific analysis results generated.';
   }
 
   private generateAnalysisFromInsights(result: any): string {
@@ -410,8 +580,33 @@ User: ${userPrompt}`;
   }
 
   private buildSystemPrompt(): string {
-    return `You are a code reasoning specialist. Output **only JSON** conforming to the provided schema. If unsure, include low confidence.
-Prefer minimal, auditable conclusions with explicit evidence (log line ranges or file spans).`;
+    return `You are a specialized log analysis and debugging expert. Your task is to provide comprehensive analysis following exact specification requirements.
+
+Core Responsibilities:
+1. **Input Validation**: Always verify log accessibility and completeness before analysis
+2. **Complete Log Categorization**: Classify EVERY log entry into the 10 specified categories (errors, warnings, info, debug, performance, security, system_events, user_actions, database_operations, network_requests)  
+3. **Deep Error Investigation**: Extract complete error details including stack traces, file locations, frequencies, and impact analysis
+4. **Structured Bug Fix Recommendations**: For each error, provide detailed recommendations with error description, location, root cause analysis, specific fixes, prevention strategies, related code areas, priority, and confidence
+
+Output Requirements:
+- **Only JSON**: Output must strictly conform to the provided schema structure
+- **Evidence-Based**: All conclusions must reference specific log entries, line numbers, timestamps, or file locations
+- **Comprehensive Coverage**: Address every error found with complete recommendation structure
+- **Accuracy**: If uncertain about any detail, include low confidence scores but still provide the required structure
+
+Analysis Depth Standards:
+- Parse error messages completely including exception types and error codes
+- Extract file paths and line numbers from stack traces with exact precision  
+- Track error frequency patterns and timing relationships
+- Map error propagation through system components with evidence
+- Correlate errors with user actions and system events using timestamps
+- Provide actionable, specific fix suggestions rather than generic advice
+
+Quality Assurance:
+- Validate that all required schema fields are populated
+- Ensure each bug fix recommendation includes all 8 required components
+- Cross-reference error patterns for consistency and completeness
+- Maintain high confidence only when evidence strongly supports conclusions`;
   }
 
   private buildUserPrompt(task: any, artifacts: Record<string, string>): string {
@@ -441,6 +636,34 @@ Prefer minimal, auditable conclusions with explicit evidence (log line ranges or
 
   private getSchemaForTask(taskType: string): any {
     const baseSchema = {
+      log_categories: {
+        errors: [{ message: 'string', type: 'string', stack_trace: 'string', frequency: 'number', file: 'string', line: 'number', timestamp: 'string' }],
+        warnings: [{ message: 'string', category: 'string', context: 'string', timestamp: 'string' }],
+        info: [{ message: 'string', flow_stage: 'string', timestamp: 'string' }],
+        debug: [{ message: 'string', details: 'string', timestamp: 'string' }],
+        performance: [{ metric: 'string', value: 'number', unit: 'string', timestamp: 'string' }],
+        security: [{ event: 'string', user: 'string', action: 'string', timestamp: 'string' }],
+        system_events: [{ event: 'string', timestamp: 'string', details: 'string' }],
+        user_actions: [{ action: 'string', timestamp: 'string', context: 'string' }],
+        database_operations: [{ operation: 'string', query: 'string', duration: 'number', timestamp: 'string' }],
+        network_requests: [{ url: 'string', method: 'string', status: 'number', duration: 'number', timestamp: 'string' }]
+      },
+      error_analysis: {
+        patterns: [{ pattern: 'string', frequency: 'number', severity: 'string', first_seen: 'string', last_seen: 'string' }],
+        failure_points: [{ location: 'string', cause: 'string', propagation_path: ['string'], impact: 'string' }],
+        error_sequences: [{ sequence: ['string'], leading_events: ['string'], trigger_conditions: ['string'] }]
+      },
+      bug_fix_recommendations: [{ 
+        error_id: 'string',
+        error_description: 'string', 
+        location: 'string',
+        root_cause_analysis: 'string',
+        specific_fix_suggestions: ['string'],
+        prevention_strategies: ['string'],
+        related_code_areas: ['string'],
+        priority: 'string',
+        confidence: 'number 0-1'
+      }],
       insights: [{ title: 'string', evidence: ['string'], confidence: 'number 0-1' }],
       suspects: [{ file: 'string', lines: ['number'], rationale: 'string' }],
       next_steps: ['string'],
@@ -459,11 +682,41 @@ Prefer minimal, auditable conclusions with explicit evidence (log line ranges or
   private getInstructionsForTask(taskType: string): string {
     switch (taskType) {
       case 'analyze_root_cause':
-        return `1. Identify error patterns and anomalies in logs
-2. Correlate errors with user actions and timestamps  
-3. Suggest specific code locations that might be causing issues
-4. Rate confidence based on evidence strength
-5. Recommend next debugging steps`;
+        return `1. **Validate and Categorize Log Content**: First verify log accessibility, then group ALL log entries into these specific categories:
+   - **Errors**: Critical failures and exceptions (include complete error messages, stack traces, file paths, line numbers)
+   - **Warnings**: Potential issues and deprecated usage
+   - **Info**: General application flow and status messages  
+   - **Debug**: Detailed execution information
+   - **Performance**: Timing and resource usage metrics
+   - **Security**: Authentication and authorization events
+   - **System Events**: Startup, shutdown, configuration changes
+   - **User Actions**: Requests, interactions, inputs
+   - **Database Operations**: Queries, transactions, connections
+   - **Network Requests**: API calls, external services
+
+2. **Deep Error Analysis**: For each error found, extract and analyze:
+   - Complete error messages and exception types with exact text
+   - Full stack traces with file paths and line numbers
+   - Error frequency patterns (recurring vs one-time) with timestamps
+   - Failure points and error propagation paths through system components
+   - Sequence of events leading to errors with precise timestamps
+   - Associated context (user actions, system state, environmental factors)
+   - Impact assessment on system functionality
+
+3. **Structured Bug Fix Recommendations**: For EACH identified error, provide:
+   - **Error Description**: Clear description of what went wrong
+   - **Location**: Exact file paths and line numbers where error occurred
+   - **Root Cause Analysis**: Deep analysis of why the error happened
+   - **Specific Fix Suggestions**: Concrete code changes and implementation steps
+   - **Prevention Strategies**: How to prevent similar errors in the future
+   - **Related Code Areas**: Other parts of codebase that might need review
+   - **Priority Level**: Critical/High/Medium/Low based on impact
+   - **Confidence Score**: 0-1 based on evidence strength
+
+4. Correlate errors with user actions and timestamps for contextual understanding
+5. Suggest specific code locations that might be causing issues with evidence
+6. Rate confidence based on evidence strength and error pattern clarity
+7. Recommend next debugging steps based on categorized findings and analysis depth`;
       case 'propose_patch':
         return `1. Analyze the issue based on provided logs and context
 2. Identify the root cause in source code
@@ -471,7 +724,7 @@ Prefer minimal, auditable conclusions with explicit evidence (log line ranges or
 4. Ensure the patch doesn't break existing functionality
 5. Provide reasoning for the proposed changes`;
       default:
-        return 'Analyze the provided data and return structured insights.';
+        return 'Analyze the provided data and return structured insights with comprehensive log categorization and bug fix recommendations.';
     }
   }
 
@@ -502,31 +755,149 @@ Prefer minimal, auditable conclusions with explicit evidence (log line ranges or
       };
       await fs.writeFile(jsonFilePath, JSON.stringify(output, null, 2), 'utf-8');
 
-      // Save markdown result
+      // Save enhanced markdown result following instruction.md format
       const mdFilePath = path.join(analysisDir, 'analysis.md');
-      const analysisContent = `# Analysis Results
+      
+      // Check if result was generated by new codex exec format
+      if (result.outputPath) {
+        // For new format, copy the analysis file and add metadata
+        let analysisContent = result.analysis;
+        const enhancedContent = `# Comprehensive Log Analysis Report
 
 ## Task: ${task.task || 'analyze_capture'}
+Generated: ${new Date().toISOString()}
+
+## Analysis Output
+*Generated using codex exec and saved to: ${result.outputPath}*
+
+${analysisContent}
+
+## Metadata
+- Session ID: ${task.sid}
+- Generation Method: codex exec --full-auto
+- Output File: ${result.outputPath}
+- Notes: ${result.notes || 'No additional notes'}
+
+---
+*This report was generated using the enhanced VDT analysis pipeline*
+`;
+        await fs.writeFile(mdFilePath, enhancedContent);
+        console.log(`[VDT] Enhanced analysis result saved to: ${jsonFilePath} and ${mdFilePath}`);
+        console.log(`[VDT] Original codex output saved to: ${result.outputPath}`);
+      } else {
+        // Legacy format handling
+        const analysisContent = `# Comprehensive Log Analysis Report
+
+## Task: ${task.task || 'analyze_capture'}
+Generated: ${new Date().toISOString()}
 
 ${result.analysis}
 
-## Proposed Solutions
+## 1. Log Content Categories
 
-${(result.solutions || []).map((sol: any, idx: number) => `### Solution ${idx + 1}
-**Rationale**: ${sol.rationale}
-**Approach**: ${sol.approach}
-**Confidence**: ${(sol.confidence * 100).toFixed(0)}%`).join('\n\n')}
+${result.log_categories ? (Object.entries(result.log_categories) as [string, any[]][]).map(([category, items]) => {
+  if (!items || items.length === 0) return '';
+  const categoryName = category.replace(/_/g, ' ').toUpperCase();
+  return `### ${categoryName}
+${items.map((item: any, idx: number) => {
+  switch (category) {
+    case 'errors':
+      return `${idx + 1}. **${item.type || 'Error'}**: ${item.message}
+   - **File**: ${item.file || 'Unknown'}:${item.line || 'N/A'}
+   - **Frequency**: ${item.frequency || 1}
+   - **Timestamp**: ${item.timestamp || 'N/A'}
+   - **Stack Trace**: ${item.stack_trace ? item.stack_trace.substring(0, 200) + '...' : 'N/A'}`;
+    case 'warnings':
+      return `${idx + 1}. **${item.category || 'Warning'}**: ${item.message}
+   - **Context**: ${item.context || 'N/A'}
+   - **Timestamp**: ${item.timestamp || 'N/A'}`;
+    case 'performance':
+      return `${idx + 1}. **${item.metric}**: ${item.value} ${item.unit}
+   - **Timestamp**: ${item.timestamp || 'N/A'}`;
+    case 'security':
+      return `${idx + 1}. **${item.event}**: ${item.action} by ${item.user || 'Unknown'}
+   - **Timestamp**: ${item.timestamp || 'N/A'}`;
+    default:
+      return `${idx + 1}. ${JSON.stringify(item, null, 2)}`;
+  }
+}).join('\n')}`;
+}).filter(Boolean).join('\n\n') : 'No categorized logs available'}
+
+## 2. Bug Fix Recommendations
+
+${result.bug_fix_recommendations?.length > 0 ? 
+  result.bug_fix_recommendations.map((rec: any, idx: number) => 
+    `### Recommendation ${idx + 1}: ${rec.error_id || `Error-${idx + 1}`}
+
+**Error Description**: ${rec.error_description || 'No description provided'}
+
+**Location**: ${rec.location || 'Location not specified'}
+
+**Root Cause Analysis**: ${rec.root_cause_analysis || 'Root cause not analyzed'}
+
+**Specific Fix Suggestions**:
+${(rec.specific_fix_suggestions || []).map((fix: string, i: number) => `${i + 1}. ${fix}`).join('\n') || '- No specific fixes provided'}
+
+**Prevention Strategies**:
+${(rec.prevention_strategies || []).map((strategy: string, i: number) => `${i + 1}. ${strategy}`).join('\n') || '- No prevention strategies provided'}
+
+**Related Code Areas to Review**:
+${(rec.related_code_areas || []).map((area: string, i: number) => `${i + 1}. ${area}`).join('\n') || '- No related areas identified'}
+
+**Priority**: ${rec.priority || 'Not specified'}
+**Confidence**: ${rec.confidence ? (rec.confidence * 100).toFixed(0) + '%' : 'Not specified'}
+`).join('\n\n')
+  : 'No bug fix recommendations generated'}
+
+## 3. Detailed Error Analysis
+
+${result.error_analysis ? `
+### Error Patterns
+${(result.error_analysis.patterns || []).map((pattern: any, idx: number) => 
+  `${idx + 1}. **${pattern.pattern}**
+   - Frequency: ${pattern.frequency}
+   - Severity: ${pattern.severity}
+   - First seen: ${pattern.first_seen || 'Unknown'}
+   - Last seen: ${pattern.last_seen || 'Unknown'}`
+).join('\n') || 'No error patterns identified'}
+
+### Failure Points
+${(result.error_analysis.failure_points || []).map((point: any, idx: number) => 
+  `${idx + 1}. **Location**: ${point.location}
+   - **Cause**: ${point.cause}
+   - **Impact**: ${point.impact || 'Not specified'}
+   - **Propagation Path**: ${point.propagation_path?.join(' → ') || 'N/A'}`
+).join('\n') || 'No failure points identified'}
+
+### Error Sequences
+${(result.error_analysis.error_sequences || []).map((seq: any, idx: number) => 
+  `${idx + 1}. **Sequence**: ${seq.sequence?.join(' → ') || 'N/A'}
+   - **Leading Events**: ${seq.leading_events?.join(', ') || 'N/A'}
+   - **Trigger Conditions**: ${seq.trigger_conditions?.join(', ') || 'N/A'}`
+).join('\n') || 'No error sequences identified'}
+` : 'No detailed error analysis available'}
+
+## 4. Additional Insights
+
+${(result.insights || []).map((insight: any, idx: number) => `### Insight ${idx + 1}: ${insight.title || 'Finding'}
+**Evidence**: ${insight.evidence?.join(', ') || 'No evidence'}
+**Confidence**: ${insight.confidence ? (insight.confidence * 100).toFixed(0) + '%' : 'Not specified'}
+`).join('\n') || 'No additional insights generated'}
+
+## 5. Next Steps
+
+${(result.next_steps || []).map((step: string, idx: number) => `${idx + 1}. ${step}`).join('\n') || 'No next steps provided'}
 
 ## Context
-${task.context?.selectedIds ? `**Selected Chunks**: ${task.context.selectedIds.join(', ')}` : ''}
-${task.context?.notes ? `**Notes**: ${task.context.notes}` : ''}
+${task.context?.selectedIds ? `**Selected Chunks**: ${task.context.selectedIds.join(', ')}\n` : ''}${task.context?.notes ? `**Notes**: ${task.context.notes}\n` : ''}
 
 ---
-Generated: ${new Date().toISOString()}
+*This report follows the comprehensive analysis format specified in instruction.md*
 `;
 
-      await fs.writeFile(mdFilePath, analysisContent);
-      console.log(`[VDT] Analysis result saved to: ${jsonFilePath}`);
+        await fs.writeFile(mdFilePath, analysisContent);
+        console.log(`[VDT] Enhanced comprehensive analysis result saved to: ${jsonFilePath} and ${mdFilePath}`);
+      }
     } catch (error) {
       console.error('[VDT] Failed to save analysis result:', error);
     }

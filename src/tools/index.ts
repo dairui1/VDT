@@ -20,8 +20,8 @@ export class VDTTools {
   private analyzeCaptureTool: AnalyzeCaptureTool;
   private endSessionTool: EndSessionTool;
 
-  constructor() {
-    this.sessionManager = new SessionManager();
+  constructor(sessionManager?: SessionManager) {
+    this.sessionManager = sessionManager || new SessionManager();
     this.captureManager = new CaptureManager();
     this.analysisEngine = new AnalysisEngine();
 
