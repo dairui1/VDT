@@ -1,21 +1,22 @@
 # VDT DebugSpec v0.3（KISS）
 
-本规范遵循 KISS 原则，定义一个最小闭环：捕获 → 分析/澄清 → 修复/回放 → 总结。默认主 Agent 为 Claude Code，代码修改与回放由 Codex 协同完成；不再受 v0.1/0.2 的工具拆分所限制。
+本规范遵循 KISS 原则，定义一个最小闭环：捕获 → 分析/澄清 → 修复/回放 → 总结。
+默认主 Agent 为 Claude Code，代码修改与回放由 Codex 协同完成
 
 ## 0. 背景与目标
-- 强推理：复杂诊断交给 Claude Code（reasoner_run），代码落地与迭代交给 Codex（补丁、测试、回放）。
+- 强推理：复杂诊断交给 Codex（reasoner_run），代码落地与迭代交给 （补丁、测试、回放）。
 - 零粘贴：所有上下文与产物资源化（`vdt://sessions/{sid}/...`），客户端通过 MCP `list_resources/read_resource` 直接获取。
 - 快速对焦：分析器产出候选日志块（candidateChunks）与 `needClarify`，必要时走澄清问卷流程。
-- 渐进侵入：默认“不插桩”；仅当信号不足时，最小化启用 `write_log`（锚点 + dryRun + 审核后应用）。
+
 
 ## 1. 能力矩阵（Tools / Prompts / Resources）
 
 ### 1.1 Tools（最小集合）
-- `start_session`（alias: `mcp_start` | `vdt_start_session`）：初始化会话并返回使用说明与资源链接。
+- `vdt_start_session`：初始化会话并返回使用说明与资源链接。
 - `capture_run`：统一的捕获入口；支持 `mode: 'cli'|'web'`。输出 `logs/capture.ndjson`（Web 场景可同时落 `actions/console/network.ndjson`）。
 - `analyze_capture`：读取上述日志，生成 `analysis/buglens.md`，并返回 `candidateChunks` 与 `needClarify`。
 - `clarify`（可选）：记录用户选择与备注到 `analysis/clarify.md`，供下一次 `analyze_capture` 提升聚焦度。
-- `reasoner_run`：由 Claude Code 完成推理，协同 Codex 产出补丁与验证脚本（`propose_patch`/`review_patch`）。
+- `reasoner_run` 由 Codex 完成推理，返回 Claude Code 主 agent 去修改
 - `replay_run`：执行验证/回放命令并采集结果（用于闭环校验）。
 - `end_session`（alias: `mcp_end`）：输出 `analysis/summary.md`（结论 + 证据 + 下一步）。
 
@@ -92,9 +93,6 @@
 ### 3.7 end_session
 - 产出 `analysis/summary.md`（Hook、关键证据、结论、回归脚本链接）。
 
-附：扩展能力（可选）
-- `write_log`/`apply_write_log`：仅当信号严重不足时考虑最小插桩；默认不启用，不在核心闭环内。
-
 ## 4. 端到端编排（默认最小闭环）
 1) `start_session` → 获取 `sid` 与资源约定
 2) `capture_run` → 产出 `logs/capture.ndjson`
@@ -104,7 +102,6 @@
 6) `end_session` → 输出总结与资源清单
 
 ## 5. 安全与合规
-- 插桩边界：仅对 `files`/`allowlist` 命中的路径生效，拒绝越权写入。
 - 环境变量：dev 进程 `env` 白名单（如 `PATH`,`NODE_OPTIONS` 等），其余忽略。
 - 脱敏：`redact.patterns` + 内置规则（常见令牌/邮箱/手机号）。
 - TTL：默认 7 天；提供清理（v0.2+ 规划 `purge_session`）。
@@ -127,7 +124,7 @@
 - 新增或别名工具：`start_session` / `clarify` / `end_session`（沿用 `SessionManager` 与资源目录）。
 - 合并数据通道：统一使用 `capture_run` + `analyze_capture`；Web 辅助流按需落盘。
 - Prompt：提供 `vdt/spec/orchestration` 最小编排；其余按需接入。
-- README：将“插桩”移至“扩展能力”，默认不启用；端到端示例采用无插桩闭环。
+- README：端到端示例采用最小闭环流程。
 
 ---
 
