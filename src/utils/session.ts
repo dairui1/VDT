@@ -44,12 +44,11 @@ export class SessionManager {
     try {
       // If repoRoot is provided, try that first
       if (repoRoot) {
-        const metaPath = join(this.getSessionDir(sid, repoRoot), 'meta.json');
+        const sessionDir = join(repoRoot, '.vdt', 'sessions', sid);
+        const metaPath = join(sessionDir, 'meta.json');
         try {
           const data = await fs.readFile(metaPath, 'utf-8');
           const session = JSON.parse(data);
-          // Update our vdtDir to match the found session for future operations
-          this.vdtDir = join(session.repoRoot, '.vdt');
           return session;
         } catch {
           // Continue to try default location
@@ -61,13 +60,13 @@ export class SessionManager {
       try {
         const data = await fs.readFile(metaPath, 'utf-8');
         const session = JSON.parse(data);
-        // Update our vdtDir to match the found session for future operations
-        this.vdtDir = join(session.repoRoot, '.vdt');
         return session;
-      } catch {
+      } catch (error) {
+        console.warn(`[VDT] Failed to read session ${sid}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         return null;
       }
-    } catch {
+    } catch (error) {
+      console.warn(`[VDT] Session retrieval error for ${sid}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return null;
     }
   }
