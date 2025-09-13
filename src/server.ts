@@ -295,6 +295,32 @@ class VDTServer {
               },
               required: ['sid']
             }
+          },
+          {
+            name: 'reasoner_run',
+            description: 'Execute reasoning task using LLM backends (Codex, OpenAI, etc.)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                sid: { type: 'string', description: 'Session ID' },
+                task: { type: 'string', enum: ['analyze_log', 'propose_patch', 'review_patch'], description: 'Reasoning task type' },
+                inputs: {
+                  type: 'object',
+                  properties: {
+                    logs: { type: 'array', items: { type: 'string' }, description: 'Log file vdt:// links' },
+                    buglens: { type: 'string', description: 'BugLens report vdt:// link' },
+                    code: { type: 'array', items: { type: 'string' }, description: 'Source code file:// links' },
+                    diff: { type: 'string', description: 'Patch diff vdt:// link' }
+                  }
+                },
+                backend: { type: 'string', description: 'Backend name (optional, auto-select if omitted)' },
+                args: { type: 'object', description: 'Backend-specific arguments' },
+                question: { type: 'string', description: 'Optional freeform question' },
+                constraints: { type: 'array', items: { type: 'string' }, description: 'Analysis constraints' },
+                redact: { type: 'boolean', description: 'Apply redaction to inputs' }
+              },
+              required: ['sid', 'task', 'inputs']
+            }
           }
         ]
       };
@@ -495,6 +521,9 @@ class VDTServer {
         case 'analyze_web_capture':
           return await this.tools.analyzeWebCapture(args as any);
         
+        case 'reasoner_run':
+          return await this.tools.reasonerRun(args as any);
+        
         default:
           throw new Error(`Unknown tool: ${name}`);
       }
@@ -517,6 +546,11 @@ class VDTServer {
     const transport = new StdioServerTransport();
     console.error('[VDT] Starting VDT MCP Server v0.2.0');
     console.error('[VDT] Web Debug HUD support enabled');
+    console.error('[VDT] Initializing reasoner backends...');
+    
+    // Initialize tools (including reasoner adapter)
+    await this.tools.initialize();
+    
     console.error('[VDT] Listening on stdio...');
     
     await this.server.connect(transport);

@@ -214,6 +214,60 @@ export type ReplayRunIn = {
 };
 ```
 
+### 2.3 Reasoner/Codex 集成（LLM 分析/修复）
+
+两种接入方式，二选一或并行：
+
+- 方式 A：通过 Claude 添加 Codex MCP，直接把 LLM（gpt-5 等）作为“推理后端”使用（推荐简洁）。
+  - 命令：`claude mcp add codex -s user -- codex -m gpt-5 -c model_reasoning_effort=high mcp`
+  - 用法：在工作流中将 `vdt/debugspec/*` 的 Prompts、或 `buglens-web.md` 的二次分析，指派给 codex 处理。
+
+- 方式 B：非交互 `codex exec`（CLI），离线产出 JSON 结果并写入会话产物。
+  - 示例（日志分析）：
+    ```bash
+    codex -m gpt-5 -c model_reasoning_effort=high exec <<'EOF' > .vdt/sessions/<sid>/analysis/reasoner_analyze.json
+    System: You are a code reasoning specialist. Output ONLY JSON per the schema.
+    User:
+      Task: analyze_log
+      Session: <sid>
+      Artifacts:
+        - logs: .vdt/sessions/<sid>/logs/console.replay.ndjson
+        - logs: .vdt/sessions/<sid>/logs/network.replay.ndjson
+        - buglens: .vdt/sessions/<sid>/analysis/buglens-web.md
+      Schema:
+        {"insights":[],"suspects":[],"next_steps":[],"notes":""}
+      Guardrails: No non-JSON text.
+    EOF
+    ```
+  - 说明：上述为最小示意；实际实现中建议走“Reasoner Adapter”统一 JSON 契约与脱敏、超时/重试、Schema 校验。
+
+可选桥接工具（VDT 内置）：
+
+9) reasoner_run（桥接 CLI/后端，可选）
+- in:
+```json
+{
+  "sid": "<sid>",
+  "task": "analyze_log|propose_patch|review_patch",
+  "inputs": {
+    "logs": ["vdt://sessions/<sid>/logs/console.replay.ndjson"],
+    "buglens": "vdt://sessions/<sid>/analysis/buglens-web.md",
+    "code": ["file://src/renderer.ts"],
+    "diff": "vdt://sessions/<sid>/patches/0001-write-log.diff"
+  },
+  "backend": "codex",
+  "args": { "model": "gpt-5", "effort": "high" }
+}
+```
+- out:
+```json
+{
+  "links": ["vdt://sessions/<sid>/analysis/reasoner_analyze.json"],
+  "result": { "insights":[],"suspects":[],"next_steps":[],"notes":"" }
+}
+```
+- 动作：按统一契约构造 Prompt，调用 `codex exec`（或其它 driver），要求返回严格 JSON，落盘到 `analysis/reasoner_*.json`。
+
 ---
 
 ## 3. 数据与目录规范
@@ -245,6 +299,8 @@ export type ReplayRunIn = {
       rec_{id}.spec.ts
     analysis/
       buglens-web.md
+      reasoner_analyze.json           # 可选：codex/offline 分析产物
+      reasoner_propose_patch.json     # 可选：codex/offline 修复建议
 ```
 
 ### 3.2 事件 ndjson（最小字段）
@@ -327,6 +383,11 @@ console（console.*.ndjson）
 - 脱敏：`redact.patterns` 应用于 devserver/console/network 文本（常见令牌/邮箱/手机号规则）
 - 最小写入：仅写 `.vdt/sessions/{sid}`；插桩改码由 `write_log` 工具，受 allowlist 管控；默认 `dryRun` 输出 diff 供审核
 - TTL：session 产物默认 7 天；提供 `purge_session`（v0.2）
+ - 外部 Reasoner（CLI/MCP）安全：
+   - 默认禁用；需显式开启 `reasoner_run` 或在 Claude 手动添加 codex MCP；
+   - 将传给后端的文本先做脱敏；
+   - 记录审计（模型名、耗时、token 估计、资源清单）；
+   - 失败与超时回退策略同 Reasoner Adapter 约定。
 - Dev 进程 `env` 白名单：`hud_start.dev.env` 仅允许 `PATH`,`NODE_OPTIONS`,`HTTP_PROXY`,`HTTPS_PROXY` 等少量白名单键；其他键忽略或需显式 `--unsafe-env` 开关。
 - 资源访问：所有产物以 `vdt://sessions/{sid}/...` 返回；MCP 需实现 `list_resources/read_resource` 将其映射到本地文件（仅读）。
 
@@ -339,6 +400,7 @@ console（console.*.ndjson）
 4) HUD UI：React + xterm.js + 事件面板（WS 订阅）
 5) Analyzer：在 `analyze_web_capture` 中实现“错误密集窗口 + 动作关联 + BugLens-Web 生成”
 6) 示例工程：`examples/gobang` 一键演示；补若干 `[data-testid]`
+7) （可选）`reasoner_run` 桥接：封装 `codex exec`，写入 `analysis/reasoner_*.json`；或在 README 中给出 `claude mcp add codex` 的接线指南
 
 ---
 

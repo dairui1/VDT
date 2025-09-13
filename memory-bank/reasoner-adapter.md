@@ -180,6 +180,43 @@ timeouts:
 
 ---
 
+# 与 Codex 的接线（实操）
+
+## 方式 A：在 Claude 中添加 Codex MCP（最少改造）
+
+在本地安装好 codex CLI 后，执行：
+
+```bash
+claude mcp add codex -s user -- codex -m gpt-5 -c model_reasoning_effort=high mcp
+```
+
+然后在对话里直接使用 `vdt/debugspec/*` 的 Prompts 或把 `buglens.md`/日志片段贴给 codex 进行分析（注意输出 JSON 约束）。
+
+优点：无需实现 Reasoner Adapter；缺点：缺少统一 JSON 校验/重试/路由，需要在 Prompt 中自行声明。
+
+## 方式 B：非交互 CLI（codex exec）
+
+示例：把会话产物作为输入，离线产出 JSON 文件，供 IDE/VDT 消费。
+
+```bash
+codex -m gpt-5 -c model_reasoning_effort=high exec <<'EOF' > .vdt/sessions/<sid>/analysis/reasoner_analyze.json
+System: You are a code reasoning specialist. Output ONLY JSON per the schema.
+User:
+  Task: analyze_log
+  Session: <sid>
+  Artifacts:
+    - logs: .vdt/sessions/<sid>/logs/capture.ndjson
+    - buglens: .vdt/sessions/<sid>/analysis/buglens.md
+  Schema:
+    {"insights":[],"suspects":[],"next_steps":[],"notes":""}
+  Guardrails: No non-JSON text.
+EOF
+```
+
+建议：生产环境仍用 Reasoner Adapter 包装 codex，统一脱敏、JSON 校验、超时/重试、成本守门与路由。
+
+---
+
 # Prompt 规范（驱动共享的模板）
 
 所有驱动共用一套**短而刚性**的系统+用户模板（保证跨模型稳定）：

@@ -194,3 +194,101 @@ export interface NetworkEvent {
   reqId: string;
   stepIdHint?: string;
 }
+
+// Reasoner Types for LLM integration
+export type ReasonerTaskType = 'analyze_log' | 'propose_patch' | 'review_patch';
+
+export interface ReasonerTask {
+  task: ReasonerTaskType;
+  sid: string;
+  inputs: {
+    logs?: string[]; // vdt:// resource links
+    buglens?: string; // vdt:// link to buglens-web.md
+    code?: string[]; // file:// links to source code
+    diff?: string; // vdt:// link to patch diff
+  };
+  question?: string; // optional freeform question
+  constraints?: string[]; // e.g., ["minimal change", "no behavior change"]
+  model_prefs?: {
+    effort?: 'low' | 'medium' | 'high';
+    max_tokens?: number;
+    temperature?: number;
+  };
+  redact?: boolean;
+}
+
+export interface ReasonerInsight {
+  title: string;
+  evidence: string[]; // log line ranges or file spans
+  confidence: number; // 0-1 score
+}
+
+export interface ReasonerSuspect {
+  file: string;
+  lines?: number[];
+  rationale: string;
+}
+
+export interface ReasonerResult {
+  insights: ReasonerInsight[];
+  suspects: ReasonerSuspect[];
+  patch_suggestion?: string; // only for propose_patch task
+  next_steps: string[];
+  notes: string; // natural language summary
+}
+
+export interface ReasonerRunIn {
+  sid: string;
+  task: ReasonerTaskType;
+  inputs: ReasonerTask['inputs'];
+  backend?: string; // which reasoner backend to use
+  args?: { model?: string; effort?: string; [key: string]: any };
+  question?: string;
+  constraints?: string[];
+  redact?: boolean;
+}
+
+export interface ReasonerRunOut {
+  links: string[]; // vdt:// links to result files
+  result: ReasonerResult;
+}
+
+// Backend Configuration Types
+export type BackendType = 'mcp' | 'cli' | 'http';
+
+export interface BackendConfig {
+  type: BackendType;
+  cmd?: string; // for cli type
+  args?: string[]; // for cli type
+  base_url?: string; // for http type
+  model?: string;
+  api_key_env?: string; // environment variable name
+  cost_hint?: 'low' | 'medium' | 'high';
+  supports?: ReasonerTaskType[];
+}
+
+export interface ReasonerConfig {
+  default_backend: string;
+  fallback_backend?: string;
+  backends: Record<string, BackendConfig>;
+  routing: Record<ReasonerTaskType | 'auto', string>;
+  thresholds: {
+    reason_score_advanced: number;
+  };
+  timeouts: {
+    default_sec: number;
+    analyze_sec: number;
+    patch_sec: number;
+  };
+}
+
+// Reasoning Score Calculation
+export interface ReasoningMetrics {
+  error_density: number;
+  stacktrace_novelty: number;
+  context_span: number;
+  churn_score: number;
+  repeat_failures: number;
+  entropy_logs: number;
+  spec_mismatch: number;
+}

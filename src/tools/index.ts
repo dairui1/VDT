@@ -5,7 +5,8 @@ import { CaptureManager } from '../utils/capture.js';
 import { AnalysisEngine } from '../utils/analysis.js';
 import { HudManager } from '../utils/hud.js';
 import { WebCaptureAnalyzer } from '../utils/web-analyzer.js';
-import { ToolResponse, HudStartIn, RecordStartIn, RecordStopIn, ReplayRunIn, AnalyzeWebCaptureIn } from '../types/index.js';
+import { ReasonerAdapter } from '../reasoner/adapter.js';
+import { ToolResponse, HudStartIn, RecordStartIn, RecordStopIn, ReplayRunIn, AnalyzeWebCaptureIn, ReasonerRunIn } from '../types/index.js';
 
 export class VDTTools {
   private sessionManager: SessionManager;
@@ -14,6 +15,7 @@ export class VDTTools {
   private analysisEngine: AnalysisEngine;
   private hudManager: HudManager;
   private webAnalyzer: WebCaptureAnalyzer;
+  private reasonerAdapter: ReasonerAdapter;
 
   constructor() {
     this.sessionManager = new SessionManager();
@@ -22,6 +24,11 @@ export class VDTTools {
     this.analysisEngine = new AnalysisEngine();
     this.hudManager = new HudManager();
     this.webAnalyzer = new WebCaptureAnalyzer();
+    this.reasonerAdapter = new ReasonerAdapter();
+  }
+
+  async initialize(): Promise<void> {
+    await this.reasonerAdapter.initialize();
   }
 
   async startSession(params: {
@@ -573,6 +580,75 @@ export class VDTTools {
         isError: true,
         message: error instanceof Error ? error.message : 'Unknown error',
         hint: 'Ensure web capture data exists in session logs'
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+    }
+  }
+
+  async reasonerRun(params: ReasonerRunIn): Promise<CallToolResult> {
+    try {
+      if (!this.reasonerAdapter.isAvailable()) {
+        throw new Error('No reasoner backends available. Please configure reasoners in .vdt/reasoners.json');
+      }
+
+      const session = await this.sessionManager.getSession(params.sid);
+      if (!session) {
+        throw new Error(`Session ${params.sid} not found`);
+      }
+
+      const sessionDir = this.sessionManager.getSessionDir(params.sid);
+
+      // Build reasoner task
+      const task = {
+        task: params.task,
+        sid: params.sid,
+        inputs: params.inputs,
+        question: params.question,
+        constraints: params.constraints,
+        model_prefs: {
+          effort: params.args?.effort || 'medium',
+          max_tokens: 4000,
+          temperature: 0.2,
+        },
+        redact: params.redact ?? true,
+      };
+
+      // Execute reasoning task
+      const result = await this.reasonerAdapter.executeTask(task, sessionDir);
+
+      // Generate response links
+      const links = [
+        `vdt://sessions/${params.sid}/analysis/reasoner_${params.task}.json`,
+      ];
+
+      const response: ToolResponse = {
+        data: {
+          links,
+          result,
+        },
+      };
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(response, null, 2)
+        }]
+      };
+
+    } catch (error) {
+      await this.sessionManager.addError(params.sid, 'reasoner_run', 'REASONER_ERROR',
+        error instanceof Error ? error.message : 'Unknown error');
+
+      const response: ToolResponse = {
+        isError: true,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        hint: 'Check reasoner configuration and backend availability. Ensure API keys are set for HTTP backends.'
       };
 
       return {
