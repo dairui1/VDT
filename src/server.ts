@@ -11,7 +11,7 @@ import {
   ListToolsRequestSchema
 } from '@modelcontextprotocol/sdk/types.js';
 import { VDTTools } from './tools/index.js';
-import { getWriteLogPrompt, getClarifyPrompt, getFixHypothesisPrompt, getOrchestrationPrompt } from './prompts/index.js';
+import { getWriteLogPrompt, getOrchestrationPrompt } from './prompts/index.js';
 import { SessionManager } from './utils/session.js';
 import { promises as fs } from 'fs';
 import { join } from 'path';
@@ -97,7 +97,7 @@ class VDTServer {
           },
           {
             name: 'analyze_capture',
-            description: 'Analyze captured logs and generate BugLens report with candidate chunks',
+            description: 'Analyze captured logs using Codex intelligence',
             inputSchema: {
               type: 'object',
               properties: {
@@ -110,55 +110,11 @@ class VDTServer {
                     timeRange: { type: 'array', items: { type: 'number' }, description: 'Time range' },
                     selectedIds: { type: 'array', items: { type: 'string' }, description: 'Selected chunk IDs' }
                   }
-                }
-              },
-              required: ['sid']
-            }
-          },
-          {
-            name: 'clarify',
-            description: 'Record user selection and notes for analysis focus',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                chunks: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: { type: 'string', description: 'Chunk ID' },
-                      title: { type: 'string', description: 'Chunk title' },
-                      excerpt: { type: 'string', description: 'Chunk excerpt' }
-                    },
-                    required: ['id', 'title', 'excerpt']
-                  },
-                  description: 'Available candidate chunks'
                 },
-                answer: {
-                  type: 'object',
-                  properties: {
-                    selectedIds: { type: 'array', items: { type: 'string' }, description: 'Selected chunk IDs' },
-                    notes: { type: 'string', description: 'Additional notes' }
-                  },
-                  required: ['selectedIds']
-                }
-              },
-              required: ['sid', 'chunks', 'answer']
-            }
-          },
-          {
-            name: 'reasoner_run',
-            description: 'Execute reasoning task using LLM backends',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
                 task: { type: 'string', enum: ['propose_patch', 'analyze_root_cause'], description: 'Reasoning task type' },
                 inputs: {
                   type: 'object',
                   properties: {
-                    buglens: { type: 'string', description: 'BugLens report vdt:// link' },
                     code: { type: 'array', items: { type: 'string' }, description: 'Source code file:// links' },
                     diff: { type: 'string', description: 'Patch diff vdt:// link' }
                   }
@@ -169,21 +125,12 @@ class VDTServer {
                     selectedIds: { type: 'array', items: { type: 'string' }, description: 'Selected chunk IDs' },
                     notes: { type: 'string', description: 'Additional context notes' }
                   }
-                }
-              },
-              required: ['sid', 'task', 'inputs']
-            }
-          },
-          {
-            name: 'verify_run',
-            description: 'Execute verification commands and capture results for validation',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                sid: { type: 'string', description: 'Session ID' },
-                script: { type: 'string', description: 'Script path (vdt:// link)' },
-                commands: { type: 'array', items: { type: 'string' }, description: 'Commands to execute' },
-                mode: { type: 'string', enum: ['cli', 'web'], description: 'Verification mode' }
+                },
+                backend: { type: 'string', description: 'Backend to use' },
+                args: { type: 'object', description: 'Additional arguments' },
+                question: { type: 'string', description: 'Specific question' },
+                constraints: { type: 'array', items: { type: 'string' }, description: 'Constraints' },
+                redact: { type: 'boolean', description: 'Apply redaction' }
               },
               required: ['sid']
             }
@@ -224,23 +171,6 @@ class VDTServer {
               { name: 'format', description: 'Log format (ndjson)', required: false },
               { name: 'notes', description: 'Additional guidance notes', required: false }
             ]
-          },
-          {
-            name: 'vdt/debugspec/clarify',
-            description: 'Interactive clarification for log analysis focus',
-            arguments: [
-              { name: 'chunks', description: 'Available log chunks for selection', required: true },
-              { name: 'multi', description: 'Allow multiple selections', required: false },
-              { name: 'question', description: 'Clarification question', required: false }
-            ]
-          },
-          {
-            name: 'vdt/debugspec/fix-hypothesis',
-            description: 'Generate actionable fix hypotheses based on BugLens analysis',
-            arguments: [
-              { name: 'buglens_uri', description: 'URI to BugLens analysis', required: true },
-              { name: 'top_k', description: 'Number of hypotheses to generate', required: false }
-            ]
           }
         ]
       };
@@ -256,12 +186,6 @@ class VDTServer {
         
         case 'vdt/debugspec/write-log':
           return getWriteLogPrompt(args as any);
-        
-        case 'vdt/debugspec/clarify':
-          return getClarifyPrompt(args as any);
-        
-        case 'vdt/debugspec/fix-hypothesis':
-          return getFixHypothesisPrompt(args as any);
         
         default:
           throw new Error(`Unknown prompt: ${name}`);
@@ -297,29 +221,11 @@ class VDTServer {
                 description: `NDJSON formatted execution logs`,
                 mimeType: 'application/x-ndjson'
               },
-              {
-                uri: `vdt://sessions/${sessionId}/logs/verify.ndjson`,
-                name: `Session ${sessionId} - Verification Logs`,
-                description: `NDJSON formatted verification execution logs`,
-                mimeType: 'application/x-ndjson'
-              },
               // Analysis artifacts
               {
-                uri: `vdt://sessions/${sessionId}/analysis/buglens.md`,
-                name: `Session ${sessionId} - BugLens Report`,
-                description: `AI-generated debugging analysis and hypotheses`,
-                mimeType: 'text/markdown'
-              },
-              {
-                uri: `vdt://sessions/${sessionId}/analysis/clarify.md`,
-                name: `Session ${sessionId} - Clarification Results`,
-                description: `User clarification selections and notes`,
-                mimeType: 'text/markdown'
-              },
-              {
-                uri: `vdt://sessions/${sessionId}/analysis/reasoning.md`,
-                name: `Session ${sessionId} - Reasoning Analysis`,
-                description: `AI reasoner analysis and solution proposals`,
+                uri: `vdt://sessions/${sessionId}/analysis/analysis.md`,
+                name: `Session ${sessionId} - Analysis Report`,
+                description: `AI-generated analysis and solution proposals`,
                 mimeType: 'text/markdown'
               },
               {
@@ -417,15 +323,6 @@ class VDTServer {
         
         case 'analyze_capture':
           return await this.tools.analyzeCapture(args as any);
-        
-        case 'clarify':
-          return await this.tools.clarify(args as any);
-        
-        case 'reasoner_run':
-          return await this.tools.reasonerRun(args as any);
-        
-        case 'verify_run':
-          return await this.tools.verifyRun(args as any);
         
         case 'end_session':
           return await this.tools.endSession(args as any);
