@@ -2,36 +2,32 @@
 
 VDT is a Model Context Protocol (MCP) server that provides AI-powered debugging workflows through structured logging, execution capture, and intelligent analysis.
 
-## Version 0.3.0 (KISS)
+## ✨ 项目简介
 
-This version implements the complete v0.3 spec with a minimal, focused debugging loop: capture → analyze → clarify → fix → verify → summarize.
+VDT —— The Vibe Debugging Tool.
 
-## ✨ Key Features
+- VDT means **Verify · Diagnose · Tune**
+- VDT also means **Visualize · Debug · Test**
 
-### 🔧 Tools (7) - Complete v0.3 Set
-- `start_session` - Initialize debugging session with TTL management
-- `capture_run` - Unified CLI and Web capture with enhanced error detection  
-- `analyze_capture` - Intelligent log analysis with candidate chunks and clarify integration
-- `clarify` - Interactive focus selection for complex analysis scenarios
-- `reasoner_run` - Deep analysis with solution proposals (propose_patch | analyze_root_cause)
-- `verify_run` - Validation and regression testing with dedicated logging
-- `end_session` - Comprehensive session summary with evidence and next steps
+### 我们要解决什么问题
 
-### 📝 Prompts (4) - Enhanced Orchestration
-- `vdt/spec/orchestration` - Minimal workflow orchestration rules (NEW)
-- `vdt/debugspec/write-log` - Guidance for safe code instrumentation  
-- `vdt/debugspec/clarify` - Interactive log analysis clarification
-- `vdt/debugspec/fix-hypothesis` - Generate actionable fix suggestions
+- 但凡不能“一口气”生成可用结果，开发精力往往变成：20% 写代码（Vibe Coding），80% 调试（Vibe Debugging）。
+- 对于 LLM 协助的提交，调试时间通常与“古法编程”调试相当，甚至更麻烦：上下文分散、复现场景困难、证据不可回放。
 
-### 📁 Resources (MCP Protocol) - Spec-Aligned
-- Session metadata (`vdt://sessions/{sid}/meta.json`)
-- Captured logs (`vdt://sessions/{sid}/logs/capture.ndjson`)  
-- Verification logs (`vdt://sessions/{sid}/logs/verify.ndjson`) - NEW
-- Web capture logs (`vdt://sessions/{sid}/logs/actions.ndjson`, `console.ndjson`, `network.ndjson`) - NEW
-- BugLens reports (`vdt://sessions/{sid}/analysis/buglens.md`)
-- Clarification results (`vdt://sessions/{sid}/analysis/clarify.md`) - NEW  
-- Reasoning analysis (`vdt://sessions/{sid}/analysis/reasoning.md`) - NEW
-- Session summaries (`vdt://sessions/{sid}/analysis/summary.md`) - NEW
+### 我们如何解决
+
+- **统一的 MCP 调试服务**：以 MCP Server 形态提供能力，任何支持 MCP 的 IDE/Agent 可即插即用。
+- **Spec Prompt 串起工具链**：`mcp_start` 向主 Agent 说明如何使用一组工具（`write_log`、`do_capture`、`analyze_debug_log`、`clarify_tool`、`verify_run`、`end_session`），把调试流程标准化。
+- **do_capture：可回放的“现场”**：一键拉起复现环境（如浏览器 + tmux/bash），捕获终端输出与前端 console；由用户/Agent 复现后点“继续”，沉淀完整调试输入。
+- **analyze_debug_log：子代理分析**：读取基线说明 + 捕获日志，自动归因与给出下一步；必要时触发 `clarify_tool` 补齐关键信息。
+- **clarify_tool：大日志也能对齐认知**：把庞大日志分组，生成选择题/问答请用户裁剪关键块；收集澄清后回写文档，并约定再次分析。
+- **write_log：结构化日志约束**：指导主 Agent 以约定格式添加日志；我们在其基础上仅补日志，不改行为，保证可比性与可回放。
+- **产出 BugLens 文档与总结钩子**：每轮形成可共享、可回归的调试资产，支持对比/评分与团队协作。
+- **与 GPT‑5/Codex 优势互补**：用“硬解 + 程序化工具”减少手工粘贴上下文、反复试错，帮你快速聚焦关键日志与决定性信号。
+
+### 一个直觉性的示例
+
+“@VDT，我的五子棋的棋子现在落到格子中间了，应该落到线上。”
 
 ## 🚀 Installation
 
@@ -294,233 +290,3 @@ console.error('DEBUG:', JSON.stringify(args, null, 2));
 3. **添加测试**：为新功能编写单元测试
 4. **更新文档**：修改 README 和相关文档
 5. **提交 PR**：包含清晰的变更说明
-
-## 📖 Usage
-
-### As MCP Server
-```bash
-node dist/server.js
-```
-
-### Complete v0.3 Workflow Example
-
-#### 1. **Start Session**  
-```javascript
-start_session({ 
-  repoRoot: './my-project', 
-  note: 'Debugging render issue',
-  ttlDays: 7
-})
-// Returns: { sid: 'uuid', spec: 'VDT DebugSpec v0.3 (KISS)', links: [...] }
-```
-
-#### 2. **Capture Execution**
-```javascript
-capture_run({ 
-  sid: 'session-id',
-  mode: 'cli', // or 'web'
-  shell: { 
-    cwd: './my-project', 
-    commands: ['pnpm run demo'],
-    timeoutSec: 30
-  },
-  redact: {
-    patterns: ['password.*']  // Custom redaction
-  }
-})
-// Returns: { chunks: ['logs/capture.ndjson'], summary: { lines: 150, errors: 5 } }
-```
-
-#### 3. **Analyze Results**
-```javascript
-analyze_capture({ 
-  sid: 'session-id', 
-  focus: { module: 'renderer' }
-})
-// Returns: { 
-//   candidateChunks: [...], 
-//   needClarify: false,
-//   buglensReport: 'vdt://sessions/{sid}/analysis/buglens.md'
-// }
-```
-
-#### 4. **Clarify Focus (if needed)**
-```javascript
-clarify({ 
-  sid: 'session-id',
-  chunks: [/* candidate chunks from analyze_capture */],
-  answer: {
-    selectedIds: ['error_window_0', 'function_renderer_gridToPixel'],
-    notes: 'Focus on rendering pipeline errors'
-  }
-})
-// Returns: { selectedIds: [...], link: 'vdt://sessions/{sid}/analysis/clarify.md' }
-```
-
-#### 5. **Deep Analysis**
-```javascript
-reasoner_run({
-  sid: 'session-id',
-  task: 'propose_patch',
-  inputs: {
-    buglens: 'vdt://sessions/{sid}/analysis/buglens.md'
-  }
-})
-// Returns: { analysis: '...', solutions: [...], link: 'vdt://sessions/{sid}/analysis/reasoning.md' }
-```
-
-#### 6. **Verify Fix**
-```javascript
-// After applying reasoner suggestions to code:
-verify_run({
-  sid: 'session-id', 
-  commands: ['pnpm test', 'pnpm run demo']
-})
-// Returns: { passed: true, verifyLog: 'vdt://sessions/{sid}/logs/verify.ndjson' }
-```
-
-#### 7. **End Session**
-```javascript
-end_session({ sid: 'session-id' })
-// Returns: { conclusion: '...', keyEvidence: [...], summaryLink: 'vdt://sessions/{sid}/analysis/summary.md' }
-```
-
-## 🔍 Demo Project
-
-Try the included Gobang game demo with intentional bugs:
-
-```bash
-cd examples/gobang
-pnpm run demo
-```
-
-**Known Issues:**
-- Missing 0.5 offset in `gridToPixel` function causing alignment issues
-- Array bounds checking errors in edge cases
-
-**VDT v0.3 Workflow:**
-1. Start session: `start_session({ repoRoot: './examples/gobang', note: 'Grid alignment bug' })`
-2. Capture execution: `capture_run({ mode: 'cli', shell: { commands: ['pnpm run demo'] } })`
-3. Analyze patterns: `analyze_capture({ focus: { module: 'renderer' } })`
-4. Deep analysis: `reasoner_run({ task: 'analyze_root_cause' })`
-5. Apply fixes and verify: `verify_run({ commands: ['pnpm test'] })`
-
-## 🏗️ Architecture
-
-### Core Components
-- **Node.js + TypeScript + ESM** - Modern JavaScript runtime
-- **MCP SDK** - Protocol implementation with stdio transport
-- **ts-morph** - AST-based safe code instrumentation
-- **node-pty** - Terminal capture with enhanced error detection
-- **diff** - Patch generation and application
-
-### Data Flow
-1. **Instrumentation**: AST analysis → Code injection → Patch generation
-2. **Capture**: Shell execution → NDJSON logging → Error classification
-3. **Analysis**: Log processing → Error clustering → Candidate chunk creation
-4. **Output**: BugLens report → Fix hypotheses → Resource links
-
-### Security Features
-- **File allowlisting** for instrumentation scope control
-- **Environment variable filtering** (PATH, NODE_OPTIONS only)
-- **Automatic sensitive data redaction** (emails, tokens, passwords)
-- **Session TTL and cleanup** with configurable retention
-- **Patch backup and rollback** capabilities
-
-## 🔧 Enhanced Error Detection
-
-VDT now includes sophisticated error pattern recognition:
-
-- **Pattern Matching**: `error:`, `exception:`, `failed:`, `cannot`, stack traces
-- **Console Output**: `console.error`, `console.warn`, stderr detection  
-- **Exit Codes**: Non-zero exit codes and process failures
-- **Clustering**: Rapid error sequence detection and temporal correlation
-- **Context Extraction**: Module, function, line numbers from stack traces
-
-## 📊 Candidate Chunk System
-
-The analysis engine creates focused debugging chunks:
-
-- **Error Windows**: High-density error regions with context
-- **Module Chunks**: Error-prone modules with event statistics
-- **Function Chunks**: Individual function error patterns
-- **Rapid Sequences**: Time-clustered error events
-
-## 🧪 Testing
-
-```bash
-pnpm test          # Basic unit tests
-pnpm run lint      # ESLint validation  
-pnpm run typecheck # TypeScript validation
-pnpm run build     # Full compilation
-```
-
-## 🔍 MCP Resources Usage
-
-VDT exposes all debugging artifacts as MCP resources:
-
-```javascript
-// List all available resources
-list_resources()
-
-// Read specific resource
-read_resource({ uri: 'vdt://sessions/{sid}/analysis/buglens.md' })
-```
-
-**Resource Types:**
-- `application/json` - Session metadata
-- `application/x-ndjson` - Structured logs
-- `text/markdown` - BugLens analysis reports
-- `text/x-diff` - Code instrumentation patches
-
-## 🛡️ Safety & Best Practices
-
-### Instrumentation Safety
-- **Always run `dryRun: true` first** to preview changes
-- **Use `allowlist`** to restrict file scope
-- **Review patches** before applying with `apply_write_log`
-- **Backup created automatically** in `patches/original-{timestamp}.backup`
-
-### Performance Considerations
-- **Timeout commands** appropriately (`timeoutSec` parameter)
-- **Use focused analysis** with `module` or `func` filters
-- **Enable redaction** for sensitive environments
-- **Clean up sessions** after debugging (TTL auto-cleanup)
-
-## 🗺️ Roadmap
-
-- **v0.4**: Enhanced reasoner backends, automated patch application, Git integration
-- **v0.5**: SSE/HTTP transport, IDE plugins, advanced clustering algorithms  
-- **v0.6**: Framework-specific debugging, performance profiling, distributed tracing
-- **v1.0**: Production deployment, authentication, enterprise features
-
-## 💡 Contributing
-
-See `examples/gobang` for a working demonstration of VDT's debugging capabilities. The example includes intentional bugs perfect for testing VDT workflows.
-
-## 📄 License
-
-MIT
-
----
-
-## 🔧 Implementation Improvements (v0.1.1)
-
-This version addresses key implementation gaps identified in the alignment review:
-
-### ✅ Resolved Issues
-- **Patch Application**: Complete write_log → apply_write_log workflow
-- **Runtime Support**: Automatic vdtLog function injection
-- **Error Classification**: Enhanced stderr and error pattern detection
-- **MCP Resources**: Full resource listing and reading support
-- **Candidate Chunks**: Precise chunk ID to event range mapping
-- **Idempotency**: Improved hash-based duplicate detection
-
-### 🔧 Technical Enhancements
-- **Diff Generation**: Proper patch creation using `diff` library
-- **Backup System**: Automatic file backup before patch application
-- **Error Clustering**: Temporal and spatial error sequence analysis
-- **Context Extraction**: Module/function parsing from stack traces
-- **Resource URIs**: Complete `vdt://sessions/{sid}/{path}` support
-
-VDT is now production-ready for the core debugging workflow! 🎉

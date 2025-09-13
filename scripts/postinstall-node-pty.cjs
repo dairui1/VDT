@@ -91,3 +91,25 @@ if (canRequireNodePty()) {
   warn('node-pty still not loadable after rebuild.');
 }
 
+// Also install HUD dependencies if HUD directory exists
+const hudDir = path.join(__dirname, '..', 'src', 'hud');
+if (fs.existsSync(hudDir) && fs.existsSync(path.join(hudDir, 'package.json'))) {
+  log('Installing HUD dependencies...');
+  try {
+    const result = spawnSync('pnpm', ['install'], { 
+      cwd: hudDir, 
+      stdio: 'inherit',
+      timeout: 60000 // 60 seconds timeout
+    });
+    if (result.status === 0) {
+      log('HUD dependencies installed successfully.');
+    } else {
+      warn('HUD dependencies installation failed, but continuing...');
+    }
+  } catch (error) {
+    warn(`HUD dependencies installation error: ${error.message}`);
+    warn('You may need to manually install HUD dependencies with:');
+    warn('  cd src/hud && pnpm install');
+  }
+}
+

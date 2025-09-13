@@ -6,11 +6,17 @@ import { FileManager } from './session.js';
 
 export class CaptureManager {
   private allowedEnvKeys = ['PATH', 'NODE_OPTIONS', 'NODE_ENV', 'HOME', 'USER'];
+  private logBroadcastCallback?: (sessionId: string, logEvent: LogEvent) => void;
+
+  setLogBroadcastCallback(callback: (sessionId: string, logEvent: LogEvent) => void) {
+    this.logBroadcastCallback = callback;
+  }
 
   async captureShell(
     sessionDir: string,
     config: CaptureConfig,
-    redactConfig: RedactConfig = {}
+    redactConfig: RedactConfig = {},
+    sessionId?: string
   ): Promise<{ chunks: string[], summary: { lines: number, errors: number, timeout?: boolean, timeoutSec?: number } }> {
     
     const logFile = join(sessionDir, 'logs', 'capture.ndjson');
@@ -85,6 +91,11 @@ export class CaptureManager {
 
             // Write to file
             FileManager.writeNDJSON(logFile, logEvent);
+            
+            // Broadcast to HUD if callback is set and sessionId is provided
+            if (this.logBroadcastCallback && sessionId) {
+              this.logBroadcastCallback(sessionId, logEvent);
+            }
           }
         }
       });
@@ -103,6 +114,11 @@ export class CaptureManager {
           const logEvent = this.parseLineWithContext(buffer, isError, 0);
           logEvent.msg = LogProcessor.redactSensitive(logEvent.msg, redactConfig.patterns);
           FileManager.writeNDJSON(logFile, logEvent);
+          
+          // Broadcast to HUD
+          if (this.logBroadcastCallback && sessionId) {
+            this.logBroadcastCallback(sessionId, logEvent);
+          }
           totalLines++;
           
           if (logEvent.level === 'error') {
@@ -121,6 +137,11 @@ export class CaptureManager {
             kv: { exitCode, hasErrors: errorCount > 0 }
           };
           FileManager.writeNDJSON(logFile, exitEvent);
+          
+          // Broadcast to HUD
+          if (this.logBroadcastCallback && sessionId) {
+            this.logBroadcastCallback(sessionId, exitEvent);
+          }
           totalLines++;
           errorCount++;
         }

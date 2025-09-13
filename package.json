@@ -14,7 +14,12 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
-    "postinstall": "node ./scripts/postinstall-node-pty.cjs"
+    "postinstall": "node ./scripts/postinstall-node-pty.cjs",
+    "hud:dev": "cd src/hud && npm run dev",
+    "hud:build": "cd src/hud && npm run build",
+    "hud:start": "cd src/hud && npm start",
+    "hud:install": "cd src/hud && npm install",
+    "test:hud": "node test-hud.js"
   },
   "keywords": [
     "mcp",
@@ -28,6 +33,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "diff": "^5.1.0",
     "node-pty": "^1.0.0",
+    "open": "^8.4.0",
     "playwright": "^1.40.0",
     "uuid": "^9.0.0"
   },

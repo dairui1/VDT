@@ -1,7 +1,10 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { BaseTool } from './base.js';
+import { HudManager } from '../utils/hud.js';
 
 export class CaptureRunTool extends BaseTool {
+  private hudManager = new HudManager();
+
   async execute(params: {
     sid: string;
     mode: 'cli' | 'web';
@@ -20,11 +23,46 @@ export class CaptureRunTool extends BaseTool {
     redact?: {
       patterns?: string[];
     };
+    openHud?: boolean;
   }): Promise<CallToolResult> {
     try {
       const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
         throw new Error(`Session ${params.sid} not found`);
+      }
+
+      // Start HUD if requested (default true for web mode)
+      let hudResult = null;
+      const shouldOpenHud = params.openHud !== false && params.mode === 'web' && params.web?.entryUrl;
+      
+      if (shouldOpenHud) {
+        try {
+          hudResult = await this.hudManager.startHud({
+            sid: params.sid,
+            dev: { 
+              cmd: '', 
+              cwd: params.shell?.cwd || process.cwd() 
+            },
+            browse: { 
+              entryUrl: params.web!.entryUrl,
+              autoOpen: true 
+            },
+            capture: {
+              screenshot: { mode: 'onAction' },
+              network: params.web?.network ? 'summary' : 'off',
+              redact: params.redact
+            }
+          }, this.sessionManager.getSessionDir(params.sid));
+          
+          // Set up log broadcasting to HUD
+          this.captureManager.setLogBroadcastCallback((sessionId, logEvent) => {
+            this.hudManager.broadcastLogEvent(sessionId, logEvent);
+          });
+          
+          console.log(`[VDT] HUD started at ${hudResult.hudUrl}`);
+        } catch (hudError) {
+          console.warn(`[VDT] Failed to start HUD:`, hudError);
+        }
       }
 
       let result;
@@ -34,7 +72,8 @@ export class CaptureRunTool extends BaseTool {
         result = await this.captureManager.captureShell(
           this.sessionManager.getSessionDir(params.sid),
           params.shell,
-          params.redact
+          params.redact,
+          params.sid
         );
       } else if (params.mode === 'web' && params.web) {
         // Web capture using Playwright
@@ -82,10 +121,20 @@ export class CaptureRunTool extends BaseTool {
         throw new Error(`Invalid capture mode or missing parameters for mode: ${params.mode}`);
       }
 
-      return this.createSuccessResponse({
+      const response: any = {
         ...result,
         outputLog: this.sessionManager.getResourceLink(params.sid, 'logs/capture.ndjson')
-      });
+      };
+
+      // Add HUD information to response
+      if (hudResult) {
+        response.hud = {
+          url: hudResult.hudUrl,
+          links: hudResult.links
+        };
+      }
+
+      return this.createSuccessResponse(response);
 
     } catch (error) {
       return this.createErrorResponse(

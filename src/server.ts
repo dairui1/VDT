@@ -60,7 +60,7 @@ class VDTServer {
           },
           {
             name: 'capture_run',
-            description: 'Unified capture entry point supporting CLI and Web modes',
+            description: 'Unified capture entry point supporting CLI and Web modes with optional Debug HUD',
             inputSchema: {
               type: 'object',
               properties: {
@@ -79,7 +79,7 @@ class VDTServer {
                 web: {
                   type: 'object',
                   properties: {
-                    entryUrl: { type: 'string', description: 'Entry URL' },
+                    entryUrl: { type: 'string', description: 'Entry URL (e.g., http://localhost:8080)' },
                     actions: { type: 'boolean', description: 'Capture actions' },
                     console: { type: 'boolean', description: 'Capture console logs' },
                     network: { type: 'boolean', description: 'Capture network requests' }
@@ -90,7 +90,8 @@ class VDTServer {
                   properties: {
                     patterns: { type: 'array', items: { type: 'string' }, description: 'Redaction patterns' }
                   }
-                }
+                },
+                openHud: { type: 'boolean', description: 'Open Debug HUD automatically (default: true for web mode)' }
               },
               required: ['sid', 'mode']
             }
