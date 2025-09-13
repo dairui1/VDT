@@ -10,7 +10,7 @@ interface HudSession {
 
 export class HudManager {
   private sessions = new Map<string, HudSession>();
-  private readonly hudPort = 3700;
+  private readonly hudPort = 3950;
 
   async startStandaloneHud(port?: number): Promise<{ hudUrl: string; port: number }> {
     const hudUrl = `http://localhost:${this.hudPort}`;
@@ -39,7 +39,7 @@ export class HudManager {
     };
     this.sessions.set(sid, session);
 
-    const hudUrl = `http://localhost:${this.hudPort}?sid=${sid}&url=${encodeURIComponent(entryUrl)}`;
+    const hudUrl = `http://localhost:${this.hudPort}?starthtml=${encodeURIComponent(entryUrl)}`;
 
     // Auto-open browser if specified
     if (params.browse.autoOpen !== false) {
