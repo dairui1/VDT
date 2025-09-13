@@ -15,14 +15,8 @@
     "lint": "eslint src/**/*.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node ./scripts/postinstall-node-pty.cjs",
-    "hud:install": "cd src/hud && pnpm install || npm install",
-    "hud:dev": "cd src/hud && pnpm run dev || npm run dev",
-    "hud:build": "cd src/hud && pnpm run build || npm run build", 
-    "hud:start": "cd src/hud && pnpm start || npm start",
-    "hud:standalone": "node scripts/start-hud-demo.js",
-    "hud:test": "node scripts/test-hud-simple.js",
     "test:hud": "node test-hud.js",
-    "prepack": "npm run build && npm run hud:install && npm run hud:build"
+    "prepack": "npm run build"
   },
   "keywords": [
     "mcp",
@@ -36,25 +30,15 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "diff": "^5.1.0",
     "node-pty": "^1.0.0",
-    "next": "15.4.5",
     "open": "^8.4.0",
     "playwright": "^1.40.0",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
     "uuid": "^9.0.0"
-  },
-  "peerDependencies": {
-    "react": ">=18",
-    "react-dom": ">=18"
   },
   "optionalDependencies": {
     "ws": "^8.18.3"
   },
   "files": [
-    "dist/**",
-    "src/hud/server.js",
-    "src/hud/.next/**",
-    "src/hud/public/**"
+    "dist/**"
   ],
   "devDependencies": {
     "@types/diff": "^5.0.0",

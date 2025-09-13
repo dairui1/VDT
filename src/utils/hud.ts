@@ -1,99 +1,19 @@
-import { spawn, ChildProcess } from 'child_process';
-import { dirname, join } from 'path';
-import { promises as fs } from 'fs';
-import { fileURLToPath } from 'url';
 import { HudStartIn, HudStartOut, HudStatusOut, LogEvent } from '../types/index.js';
 import * as openModule from 'open';
 const open = (openModule as unknown as { default?: (target: string) => Promise<unknown> }).default ?? (openModule as unknown as (target: string) => Promise<unknown>);
 
 interface HudSession {
   sessionId: string;
-  port: number;
-  process: ChildProcess;
   entryUrl: string;
   startTime: number;
 }
 
 export class HudManager {
   private sessions = new Map<string, HudSession>();
-  private basePort = 3900;
-
-  private async pathExists(pathname: string): Promise<boolean> {
-    try {
-      await fs.access(pathname);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private async resolveHudDir(): Promise<string> {
-    // Resolve package root from compiled dist file location
-    const currentFile = fileURLToPath(import.meta.url);
-    const currentDir = dirname(currentFile); // dist/utils
-    const distDir = join(currentDir, '..');
-    const packageRoot = join(distDir, '..');
-
-    const candidates = [
-      // When running from an installed package
-      join(packageRoot, 'src', 'hud'),
-      // Fallback to CWD (development)
-      join(process.cwd(), 'src', 'hud')
-    ];
-
-    for (const dir of candidates) {
-      if (await this.pathExists(join(dir, 'server.js'))) {
-        return dir;
-      }
-    }
-
-    throw new Error('Failed to locate HUD directory. Expected src/hud with server.js');
-  }
+  private readonly hudPort = 3700;
 
   async startStandaloneHud(port?: number): Promise<{ hudUrl: string; port: number }> {
-    const targetPort = port || await this.findAvailablePort();
-    const sessionId = 'standalone-' + Date.now();
-    
-    // Start HUD server
-    const hudDir = await this.resolveHudDir();
-    const hudProcess = spawn('node', ['server.js'], {
-      cwd: hudDir,
-      env: {
-        ...process.env,
-        PORT: targetPort.toString(),
-        NODE_ENV: 'production'
-      },
-      stdio: 'pipe'
-    });
-
-    // Store session (reuse existing session structure)
-    const session: HudSession = {
-      sessionId,
-      port: targetPort,
-      process: hudProcess,
-      entryUrl: 'http://localhost:3000', // Default entry URL
-      startTime: Date.now()
-    };
-    this.sessions.set(sessionId, session);
-
-    // Handle process events
-    hudProcess.stdout?.on('data', (data) => {
-      console.log(`[HUD:${sessionId}] ${data.toString().trim()}`);
-    });
-
-    hudProcess.stderr?.on('data', (data) => {
-      console.error(`[HUD:${sessionId}] ${data.toString().trim()}`);
-    });
-
-    hudProcess.on('exit', (code) => {
-      console.log(`HUD process for session ${sessionId} exited with code ${code}`);
-      this.sessions.delete(sessionId);
-    });
-
-    // Wait for server to start
-    await this.waitForServer(targetPort);
-
-    const hudUrl = `http://localhost:${targetPort}`;
+    const hudUrl = `http://localhost:${this.hudPort}`;
     
     // Auto-open browser
     try {
@@ -104,66 +24,22 @@ export class HudManager {
       console.log(`[VDT] Please manually open: ${hudUrl}`);
     }
     
-    return { hudUrl, port: targetPort };
+    return { hudUrl, port: this.hudPort };
   }
 
   async startHud(params: HudStartIn, sessionDir: string): Promise<HudStartOut> {
     const { sid } = params;
     const entryUrl = params.browse.entryUrl;
     
-    // Check if HUD is already running for this session
-    if (this.sessions.has(sid)) {
-      const session = this.sessions.get(sid)!;
-      return {
-        sid,
-        hudUrl: `http://localhost:${session.port}?sid=${sid}&url=${encodeURIComponent(entryUrl)}`,
-        links: []
-      };
-    }
-
-    // Find available port
-    const port = await this.findAvailablePort();
-    
-    // Start HUD server
-    const hudDir = await this.resolveHudDir();
-    const hudProcess = spawn('node', ['server.js'], {
-      cwd: hudDir,
-      env: {
-        ...process.env,
-        PORT: port.toString(),
-        NODE_ENV: 'production'
-      },
-      stdio: 'pipe'
-    });
-
-    // Store session
+    // Store session info for tracking
     const session: HudSession = {
       sessionId: sid,
-      port,
-      process: hudProcess,
       entryUrl,
       startTime: Date.now()
     };
     this.sessions.set(sid, session);
 
-    // Handle process events
-    hudProcess.stdout?.on('data', (data) => {
-      console.log(`[HUD:${sid}] ${data}`);
-    });
-
-    hudProcess.stderr?.on('data', (data) => {
-      console.error(`[HUD:${sid}] ${data}`);
-    });
-
-    hudProcess.on('exit', (code) => {
-      console.log(`HUD process for session ${sid} exited with code ${code}`);
-      this.sessions.delete(sid);
-    });
-
-    // Wait for server to start
-    await this.waitForServer(port);
-
-    const hudUrl = `http://localhost:${port}?sid=${sid}&url=${encodeURIComponent(entryUrl)}`;
+    const hudUrl = `http://localhost:${this.hudPort}?sid=${sid}&url=${encodeURIComponent(entryUrl)}`;
 
     // Auto-open browser if specified
     if (params.browse.autoOpen !== false) {
@@ -199,8 +75,7 @@ export class HudManager {
 
     return {
       dev: { 
-        status: 'running',
-        pid: session.process.pid
+        status: 'running'  // Assume HUD service is running externally
       },
       browser: { 
         status: 'ready', 
@@ -224,8 +99,7 @@ export class HudManager {
       return { stopped: false, links: [] };
     }
 
-    // Kill the HUD process
-    session.process.kill();
+    // Just remove session tracking (HUD service runs externally)
     this.sessions.delete(sid);
 
     const links = saveTrace ? [
@@ -250,62 +124,8 @@ export class HudManager {
     }
   }
 
-  private async findAvailablePort(): Promise<number> {
-    const net = await import('net');
-    
-    for (let port = this.basePort; port < this.basePort + 100; port++) {
-      if (await this.isPortFree(port)) {
-        return port;
-      }
-    }
-    
-    throw new Error('No available ports found');
-  }
-
-  private async isPortFree(port: number): Promise<boolean> {
-    const net = await import('net');
-    
-    return new Promise((resolve) => {
-      const server = net.createServer();
-      
-      server.on('error', () => {
-        resolve(false);
-      });
-      
-      server.listen(port, () => {
-        server.close(() => {
-          resolve(true);
-        });
-      });
-    });
-  }
-
-  private async waitForServer(port: number): Promise<void> {
-    const maxAttempts = 30;
-    const delay = 1000;
-    
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      try {
-        const response = await fetch(`http://localhost:${port}`);
-        if (response.ok || response.status === 404) {
-          return; // Server is responding
-        }
-      } catch (error) {
-        // Server not ready yet
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, delay));
-    }
-    
-    throw new Error(`HUD server failed to start on port ${port} after ${maxAttempts} attempts`);
-  }
-
   async dispose(): Promise<void> {
-    // Stop all running HUD sessions
-    const stopPromises = Array.from(this.sessions.keys()).map(sid => 
-      this.stopHud(sid, false)
-    );
-    
-    await Promise.all(stopPromises);
+    // Clear all session tracking
+    this.sessions.clear();
   }
 }
