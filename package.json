@@ -31,7 +31,6 @@
     "diff": "^5.1.0",
     "node-pty": "^1.0.0",
     "open": "^8.4.0",
-    "playwright": "^1.40.0",
     "uuid": "^9.0.0"
   },
   "optionalDependencies": {

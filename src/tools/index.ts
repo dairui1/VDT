@@ -68,6 +68,7 @@ export class VDTTools {
     redact?: {
       patterns?: string[];
     };
+    openHud?: boolean;
   }): Promise<CallToolResult> {
     return this.captureRunTool.execute(params);
   }

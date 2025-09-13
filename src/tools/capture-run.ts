@@ -28,7 +28,7 @@ export class CaptureRunTool extends BaseTool {
     try {
       const session = await this.sessionManager.getSession(params.sid);
       if (!session) {
-        throw new Error(`Session ${params.sid} not found`);
+        throw new Error(`Session ${params.sid} not found. Please create a session first using start_session tool.`);
       }
 
       // Start HUD if requested (default true for web mode)
@@ -79,47 +79,37 @@ export class CaptureRunTool extends BaseTool {
           params.sid
         );
       } else if (params.mode === 'web' && params.web) {
-        // Web capture using Playwright
-        const { PlaywrightManager } = await import('../utils/playwright.js');
-        const playwright = new PlaywrightManager();
+        // Web capture mode - user manually downloads logs
+        console.log(`[VDT] Web capture mode: User will manually download logs from ${params.web.entryUrl}`);
+        console.log(`[VDT] HUD provides interface for manual log collection and download`);
         
-        try {
-          await playwright.initialize();
-          await playwright.startBrowser(params.web.entryUrl, this.sessionManager.getSessionDir(params.sid));
-          
-          // Start recording if capture options are enabled
-          if (params.web.actions || params.web.console || params.web.network) {
-            await playwright.startRecording(
-              `capture_${Date.now()}`,
-              params.web.entryUrl
-            );
-            
-            // Let it run for a reasonable time for web capture
-            await new Promise(resolve => setTimeout(resolve, 10000));
-            
-            const recordingResult = await playwright.stopRecording(
-              `capture_${Date.now()}`,
-              ['json']
-            );
-            
-            result = {
-              chunks: ['logs/actions.ndjson', 'logs/console.ndjson', 'logs/network.ndjson'],
-              summary: { 
-                lines: 0, 
-                errors: 0,
-                webCapture: true,
-                links: recordingResult.links
-              }
-            };
-          } else {
-            result = {
-              chunks: ['logs/capture.ndjson'],
-              summary: { lines: 0, errors: 0, webCapture: true }
-            };
-          }
-        } finally {
-          await playwright.dispose();
+        // Create session directories for manual log uploads
+        const sessionDir = this.sessionManager.getSessionDir(params.sid);
+        const { FileManager } = await import('../utils/session.js');
+        await FileManager.ensureDir(sessionDir);
+        await FileManager.ensureDir(`${sessionDir}/logs`);
+        
+        // Create placeholder files to indicate expected log types
+        const logTypes = [];
+        if (params.web.actions) logTypes.push('actions');
+        if (params.web.console) logTypes.push('console');
+        if (params.web.network) logTypes.push('network');
+        
+        const chunks = logTypes.map(type => `logs/${type}.ndjson`);
+        if (chunks.length === 0) {
+          chunks.push('logs/capture.ndjson');
         }
+        
+        result = {
+          chunks,
+          summary: { 
+            lines: 0, 
+            errors: 0,
+            webCapture: true,
+            captureMethod: 'manual',
+            instructions: 'Use HUD interface to interact with the web application and download logs manually'
+          }
+        };
       } else {
         throw new Error(`Invalid capture mode or missing parameters for mode: ${params.mode}`);
       }
